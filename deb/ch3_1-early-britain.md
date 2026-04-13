@@ -1,4 +1,5 @@
 # Early Britain
+
 ## Stone Age
 - first people were hunter-gatherers in the Stone Age
 - Britain was connected to Europe by a land bridge
@@ -6,13 +7,15 @@
 - **10,000 y.ago**: Britain got separated from Europe
 - **6,000 y.ago**: first farmers arrived from SE Europe (probably)
 - They built houses, tombs, monuments
-    - **Stonehenge** in **Wiltshire**
-    - **Skara Brae** in **Orkney** (N coast of Scotland) <- best preserved
-      pre-historic village in N Europe; shows late Stone Age life
+  - **Stonehenge** in **Wiltshire**
+  - **Skara Brae** in **Orkney** (N coast of Scotland) - best preserved
+    pre-historic village in N Europe; shows late Stone Age life
+
 ## Bronze Age
 - **4,000 y.ago**: bronze age
 - people lived in round houses and buried dead in round tombs "round barrows"
 - accomplished metal workers: ornaments, tools and weapons
+
 ## Iron Age
 - made tools, weapons with iron
 - lived in round houses, larger settlements, built hill forts
@@ -23,6 +26,7 @@
 - sophisticated culture and economics
   - first coins minted in Britain (inscribed with names of the kings)
   - marks the beginning of British history
+
 ## Romans
 - **55 BC**: **Julius Caesar** - failed attempt to invade Britain
 - **43 AD**: **Claudius** - successful invasion
@@ -42,6 +46,7 @@
   - created a structure of law
   - introduced new plants and animals
   - **3rd and 4th century**: first christian communities appeared
+
 ## Anglo-Saxons
 - invaders from N Europe: **Jutes**, **Angles**, **Saxons**
 - basis of English language
@@ -49,7 +54,7 @@
 - **Sutton Hoo** in **Suffolk**: burial of one of the kings
   - buried with treasure and armour
   - placed in a ship
-  - covered by a mound of mud
+  - covered by a mound of earth
 - part of W Britain, including Wales and Scotland remained free of
   Anglo-Saxon rule
 - Christianity:
@@ -63,6 +68,7 @@
       - led missionaries from Rome
       - spread Christianity to the S
       - became the first Archbishop of **Canterbury**
+
 ## Vikings
 - **789 AD**: vikings first raided coastal towns
   - to take away goods and slaves
@@ -81,6 +87,7 @@
     - **Cnut** / **Canute**: the first of these kings
 - **Kenneth McAlpin**: in the N, Viking attacks encouraged unity under this king
 - Scotland: the name started to be used
+
 ## Norman Conquest
 - **1066** — **Battle of Hastings**: **William**, **Duke of Normandy**, invaded
   England, defeating **Harold**, the Saxon king of England
