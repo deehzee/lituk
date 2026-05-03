@@ -103,3 +103,8 @@ supplementary. Do not rely solely on the cheat sheet.
   break URLs, code spans, or table cells)
 - **Python imports**: three sections in order — (1) standard library, (2) third-party,
   (3) first-party; alphabetical within each section; blank line between sections
+
+### Testing
+
+- 100% test coverage
+- End to end test
