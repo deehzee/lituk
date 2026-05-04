@@ -1,5 +1,3 @@
-import sqlite3
-
 from lituk.db import get_or_create_fact, init_db
 
 
