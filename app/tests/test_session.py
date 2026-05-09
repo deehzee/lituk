@@ -6,7 +6,12 @@ import pytest
 
 from lituk.db import init_db
 from lituk.review.presenter import Prompt
-from lituk.review.session import SessionConfig, SessionResult, run_session
+from lituk.review.session import (
+    SessionConfig,
+    SessionResult,
+    run_drill_session,
+    run_session,
+)
 
 
 TODAY = date(2026, 5, 9)
@@ -397,3 +402,155 @@ def test_e2e_tag_then_session_with_topic_filter(conn):
     }
     assert fid3 in review_fact_ids
     assert fid5 not in review_fact_ids
+
+
+# ---------------------------------------------------------------------------
+# session_id write-through
+# ---------------------------------------------------------------------------
+
+def test_session_id_written_to_reviews(conn):
+    _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI(),
+        session_id="test-uuid",
+    )
+    row = conn.execute("SELECT session_id FROM reviews").fetchone()
+    assert row["session_id"] == "test-uuid"
+
+
+def test_session_id_none_writes_null(conn):
+    _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    run_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    row = conn.execute("SELECT session_id FROM reviews").fetchone()
+    assert row["session_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Drill session
+# ---------------------------------------------------------------------------
+
+def _seed_lapsed_card(conn, fact_id, lapses=1):
+    conn.execute(
+        "INSERT OR REPLACE INTO card_state"
+        " (fact_id, ease_factor, interval_days, repetitions, due_date, lapses)"
+        " VALUES (?, 2.0, 1, 1, ?, ?)",
+        (fact_id, (TODAY - timedelta(days=1)).isoformat(), lapses),
+    )
+    conn.commit()
+
+
+def test_drill_session_pulls_only_lapsed_facts(conn):
+    fid_lapsed = _insert_fact_and_question(conn, "Q_lapsed?", "A", 1, 1)
+    _insert_fact_and_question(conn, "Q_new?", "A", 1, 2)
+    _seed_lapsed_card(conn, fid_lapsed, lapses=1)
+
+    ui = StubUI()
+    run_drill_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui
+    )
+    shown = {p.fact_id for p in ui.prompts_shown}
+    assert fid_lapsed in shown
+
+
+def test_drill_session_excludes_non_lapsed_facts(conn):
+    _insert_fact_and_question(conn, "Q_new?", "A", 1, 1)  # no card_state
+    fid_due = _insert_fact_and_question(conn, "Q_due?", "A", 1, 2)
+    _seed_lapsed_card(conn, fid_due, lapses=0)  # due but no lapses
+
+    ui = StubUI()
+    result = run_drill_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui
+    )
+    assert result.total == 0  # drill pool is empty
+
+
+def test_drill_session_writes_pool_drill(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    _seed_lapsed_card(conn, fid, lapses=2)
+
+    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+
+    row = conn.execute("SELECT pool FROM reviews").fetchone()
+    assert row["pool"] == "drill"
+
+
+def test_drill_session_updates_sm2(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    _seed_lapsed_card(conn, fid, lapses=1)
+
+    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+
+    row = conn.execute(
+        "SELECT repetitions FROM card_state WHERE fact_id=?", (fid,)
+    ).fetchone()
+    assert row["repetitions"] > 0
+
+
+def test_drill_session_does_not_update_pool_state(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    _seed_lapsed_card(conn, fid, lapses=1)
+
+    before = conn.execute(
+        "SELECT alpha, beta FROM pool_state"
+    ).fetchall()
+    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    after = conn.execute(
+        "SELECT alpha, beta FROM pool_state"
+    ).fetchall()
+
+    assert [(r["alpha"], r["beta"]) for r in before] == [
+        (r["alpha"], r["beta"]) for r in after
+    ]
+
+
+def test_drill_session_id_written(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    _seed_lapsed_card(conn, fid, lapses=1)
+
+    run_drill_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI(),
+        session_id="drill-uuid",
+    )
+    row = conn.execute("SELECT session_id FROM reviews").fetchone()
+    assert row["session_id"] == "drill-uuid"
+
+
+def test_drill_session_topic_filter(conn):
+    fid3 = _insert_fact_and_question(conn, "Q_ch3?", "A", 1, 1, topic=3)
+    fid4 = _insert_fact_and_question(conn, "Q_ch4?", "A", 1, 2, topic=4)
+    _seed_lapsed_card(conn, fid3, lapses=1)
+    _seed_lapsed_card(conn, fid4, lapses=1)
+
+    ui = StubUI()
+    run_drill_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
+        topics=[3],
+    )
+    shown = {p.fact_id for p in ui.prompts_shown}
+    assert fid3 in shown
+    assert fid4 not in shown
+
+
+def test_drill_session_lapsed_in_session_reinforcement(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    _seed_lapsed_card(conn, fid, lapses=1)
+
+    class WrongThenRightUI(StubUI):
+        def __init__(self):
+            super().__init__()
+            self._call = 0
+
+        def show_prompt(self, prompt):
+            self.prompts_shown.append(prompt)
+            self._call += 1
+            if self._call == 1:
+                wrong = [i for i in range(len(prompt.choices))
+                         if i not in prompt.correct_indices]
+                return wrong[:1] if wrong else list(prompt.correct_indices)
+            return list(prompt.correct_indices)
+
+    ui = WrongThenRightUI()
+    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
+    assert ui.prompts_shown.count(ui.prompts_shown[0]) >= 1
+    shown_facts = [p.fact_id for p in ui.prompts_shown]
+    assert shown_facts.count(fid) >= 2
