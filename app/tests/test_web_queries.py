@@ -301,6 +301,21 @@ def test_missed_reviews_returns_only_incorrect(tmp_path):
     assert rows[0]["fact_id"] == fid
 
 
+def test_missed_reviews_includes_chapter_name(tmp_path):
+    conn = init_db(str(tmp_path / "t.db"))
+    fid_tagged = _insert_fact(conn, "Q3?", "A", topic=3)
+    fid_null = _insert_fact(conn, "Qnull?", "A")
+    qid3 = _insert_question(conn, fid_tagged, 1, 1)
+    qid_null = _insert_question(conn, fid_null, 1, 2)
+    _insert_review(conn, fid_tagged, qid3, correct=False)
+    _insert_review(conn, fid_null, qid_null, correct=False)
+    rows = {r["fact_id"]: r for r in missed_reviews(conn)}
+    assert rows[fid_tagged]["chapter_name"] is not None
+    assert rows[fid_tagged]["topic_id"] == 3
+    assert rows[fid_null]["chapter_name"] is None
+    assert rows[fid_null]["topic_id"] is None
+
+
 def test_missed_reviews_chapter_filter(tmp_path):
     conn = init_db(str(tmp_path / "t.db"))
     fid3 = _insert_fact(conn, "Q3?", "A", topic=3)
