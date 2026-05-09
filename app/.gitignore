@@ -1,0 +1,6 @@
+data/lituk.db
+__pycache__/
+*.pyc
+.coverage
+.pytest_cache/
+.venv/
