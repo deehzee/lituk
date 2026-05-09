@@ -12,7 +12,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv]
-dev-dependencies = ["pytest"]
+dev-dependencies = ["pytest", "pytest-cov"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
