@@ -1,6 +1,6 @@
 from tests.conftest import PDF_TEST_1
 
-from lituk.ingest.parser import clean_text, extract_raw
+from lituk.ingest.parser import clean_text, extract_raw, parse_questions_block
 
 
 def test_extract_raw_returns_string():
@@ -39,3 +39,78 @@ def test_clean_text_strips_page_numbers():
     result = clean_text(dirty)
     assert "1/13" not in result
     assert "2/13" not in result
+
+
+_SAMPLE_Q_BLOCK = """
+1. What is known as Lent?
+A.
+The 40 days before Easter
+B.
+The 40 days after Christmas
+C.
+The 40 days before Christmas
+D.
+The 40 days after Easter
+
+2. One TV licence covers all equipment at one address, but people who rent
+different rooms in a shared house must buy a separate TV licence
+A.
+False
+B.
+True
+
+3. Who can nominate life peers? (Select TWO)
+A.
+The Prime Minister
+B.
+The Monarchy
+C.
+The Speaker
+D.
+Leaders of other main political parties
+"""
+
+
+def test_parse_questions_block_count():
+    qs = parse_questions_block(_SAMPLE_Q_BLOCK)
+    assert len(qs) == 3
+
+
+def test_parse_questions_block_text():
+    qs = parse_questions_block(_SAMPLE_Q_BLOCK)
+    assert qs[0]["question_text"] == "What is known as Lent?"
+
+
+def test_parse_questions_block_choices():
+    qs = parse_questions_block(_SAMPLE_Q_BLOCK)
+    assert qs[0]["choices"] == [
+        "The 40 days before Easter",
+        "The 40 days after Christmas",
+        "The 40 days before Christmas",
+        "The 40 days after Easter",
+    ]
+    assert qs[0]["choice_letters"] == ["A", "B", "C", "D"]
+
+
+def test_parse_questions_block_true_false():
+    qs = parse_questions_block(_SAMPLE_Q_BLOCK)
+    assert qs[1]["is_true_false"] is True
+    assert qs[1]["is_multi"] is False
+
+
+def test_parse_questions_block_multi():
+    qs = parse_questions_block(_SAMPLE_Q_BLOCK)
+    assert qs[2]["is_multi"] is True
+    assert qs[2]["is_true_false"] is False
+
+
+def test_parse_questions_block_no_choices():
+    block = """
+1. What is this question?
+
+2. Another question?"""
+    qs = parse_questions_block(block)
+    assert len(qs) == 2
+    assert qs[0]["question_text"] == "What is this question?"
+    assert qs[0]["choices"] == []
+    assert qs[0]["choice_letters"] == []
