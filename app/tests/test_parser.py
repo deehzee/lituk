@@ -1,4 +1,7 @@
 import json
+import unittest.mock as mock
+
+import pytest
 
 from tests.conftest import PDF_TEST_1
 
@@ -195,3 +198,14 @@ def test_parse_pdf_choices_is_json_string():
     choices = json.loads(rows[0]["choices"])
     assert isinstance(choices, list)
     assert len(choices) == 4
+
+
+def test_parse_pdf_raises_on_missing_answers_section(tmp_path):
+    fake_pdf = tmp_path / "fake.pdf"
+    # Create a minimal valid PDF with no Answers section
+    # We can't easily create a real PDF, so patch extract_raw instead
+    with mock.patch(
+        "lituk.ingest.parser.extract_raw", return_value="No answers here"
+    ):
+        with pytest.raises(ValueError, match="No 'Answers' section"):
+            parse_pdf("any_path.pdf", test_num=1)

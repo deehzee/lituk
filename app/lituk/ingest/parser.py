@@ -4,8 +4,8 @@ import subprocess
 
 
 _ANSWER_LINE_RE = re.compile(r'^([A-D]) - .+$')
-_ANSWER_NUM_SPLIT = re.compile(r'\n(\d+)\.\n')
 _ANSWERS_SPLIT = re.compile(r'\nAnswers\n')
+_ANSWER_NUM_SPLIT = re.compile(r'\n(\d+)\.\n')
 _CHOICE_LINE_RE = re.compile(r'^([A-D])\.$')
 _DATE_RE = re.compile(r'\d{2}/\d{2}/\d{4},\s*\d{2}:\d{2}')
 _PAGENUM_RE = re.compile(r'^\d+/\d+$', re.MULTILINE)
