@@ -2,6 +2,7 @@ import argparse
 import pathlib
 import random
 import sys
+import uuid
 from datetime import date
 
 from lituk.db import init_db
@@ -48,6 +49,7 @@ def main(
     run_session(
         conn, date.today(), _rng or random.Random(), config, TerminalUI(),
         topics=parsed.topic,
+        session_id=str(uuid.uuid4()),
     )
     conn.close()
     sys.exit(0)

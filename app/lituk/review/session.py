@@ -62,7 +62,25 @@ def _new_pool(
     return [r["id"] for r in conn.execute(sql, params).fetchall()]
 
 
-def _load_posteriors(conn: sqlite3.Connection) -> tuple[PoolPosterior, PoolPosterior]:
+def _drill_pool(
+    conn: sqlite3.Connection, topics: list[int] | None = None
+) -> list[int]:
+    topic_sql = (
+        f" AND f.topic IN ({','.join('?' * len(topics))})" if topics else ""
+    )
+    sql = (
+        "SELECT cs.fact_id FROM card_state cs"
+        " JOIN facts f ON f.id = cs.fact_id"
+        f" WHERE cs.lapses > 0{topic_sql}"
+        " ORDER BY cs.lapses DESC, cs.last_reviewed_at ASC"
+    )
+    params: list = list(topics) if topics else []
+    return [r["fact_id"] for r in conn.execute(sql, params).fetchall()]
+
+
+def _load_posteriors(
+    conn: sqlite3.Connection,
+) -> tuple[PoolPosterior, PoolPosterior]:
     rows = {
         r["pool"]: r
         for r in conn.execute(
@@ -137,12 +155,13 @@ def _save_review(
     correct: bool,
     pool: str,
     state: CardState,
+    session_id: str | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO reviews"
         " (fact_id, question_id, reviewed_at, grade, correct, pool,"
-        "  ease_after, interval_after)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "  ease_after, interval_after, session_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             fact_id,
             question_id,
@@ -152,9 +171,40 @@ def _save_review(
             pool,
             state.ease,
             state.interval,
+            session_id,
         ),
     )
     conn.commit()
+
+
+def _present_and_grade(
+    conn: sqlite3.Connection,
+    today: date,
+    ui: UI,
+    fact_id: int,
+    pool_label: str,
+    rng: random.Random,
+    session_id: str | None = None,
+) -> tuple[bool, CardState]:
+    """Present one card, collect grade, persist state. Return (correct, new_state)."""
+    prompt = build_prompt(conn, fact_id, rng)
+    user_indices = ui.show_prompt(prompt)
+    correct = grade_answer(prompt, user_indices)
+
+    state = _load_card_state(conn, fact_id, today)
+    if correct:
+        grade = ui.show_feedback(prompt, True)
+    else:
+        grade = 0
+        ui.show_feedback(prompt, False)
+
+    new_state = sm2_update(state, grade, today)
+    _save_card_state(conn, fact_id, new_state)
+    _save_review(
+        conn, fact_id, prompt.question_id, grade, correct,
+        pool_label, new_state, session_id,
+    )
+    return correct, new_state
 
 
 def run_session(
@@ -164,9 +214,11 @@ def run_session(
     config: SessionConfig,
     ui: UI,
     topics: list[int] | None = None,
+    session_id: str | None = None,
 ) -> SessionResult:
     due: list[int] = _due_pool(conn, today, topics)
     new: list[int] = _new_pool(conn, topics)
+    rng.shuffle(new)
     due_post, new_post = _load_posteriors(conn)
 
     lapsed: deque[int] = deque()
@@ -200,21 +252,9 @@ def run_session(
                 pool_label = "new"
                 new_drawn += 1
 
-        prompt = build_prompt(conn, fact_id, rng)
-        user_indices = ui.show_prompt(prompt)
-        correct = grade_answer(prompt, user_indices)
-
-        state = _load_card_state(conn, fact_id, today)
-        if correct:
-            grade = ui.show_feedback(prompt, True)
-        else:
-            grade = 0
-            ui.show_feedback(prompt, False)
-
-        new_state = sm2_update(state, grade, today)
-        _save_card_state(conn, fact_id, new_state)
-        _save_review(conn, fact_id, prompt.question_id, grade, correct,
-                     pool_label, new_state)
+        correct, _ = _present_and_grade(
+            conn, today, ui, fact_id, pool_label, rng, session_id
+        )
 
         if pool_label != "lapsed":
             if pool_label == "due":
@@ -222,6 +262,55 @@ def run_session(
             else:
                 new_post = bandit_update(new_post, correct)
             _save_posteriors(conn, due_post, new_post)
+
+        if correct:
+            correct_count += 1
+        else:
+            weak.add(fact_id)
+            lapsed.append(fact_id)
+
+        total += 1
+
+    result = SessionResult(
+        correct=correct_count,
+        total=total,
+        weak_facts=sorted(weak),
+    )
+    ui.show_summary(result)
+    return result
+
+
+def run_drill_session(
+    conn: sqlite3.Connection,
+    today: date,
+    rng: random.Random,
+    config: SessionConfig,
+    ui: UI,
+    topics: list[int] | None = None,
+    session_id: str | None = None,
+) -> SessionResult:
+    """Session using only facts with prior lapses. No bandit; updates SM-2."""
+    pool: list[int] = _drill_pool(conn, topics)
+    rng.shuffle(pool)
+
+    lapsed: deque[int] = deque()
+    correct_count = 0
+    total = 0
+    weak: set[int] = set()
+
+    for _ in range(config.size):
+        if lapsed:
+            fact_id = lapsed.popleft()
+            pool_label = "lapsed"
+        else:
+            if not pool:
+                break
+            fact_id = pool.pop(0)
+            pool_label = "drill"
+
+        correct, _ = _present_and_grade(
+            conn, today, ui, fact_id, pool_label, rng, session_id
+        )
 
         if correct:
             correct_count += 1

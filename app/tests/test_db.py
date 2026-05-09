@@ -133,3 +133,44 @@ def test_facts_topic_fk_rejects_invalid_chapter(tmp_path):
         conn.execute("UPDATE facts SET topic=99 WHERE id=?", (fid,))
         conn.commit()
     conn.close()
+
+
+def test_reviews_has_session_id_column(tmp_path):
+    conn = init_db(str(tmp_path / "test.db"))
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(reviews)")}
+    assert "session_id" in cols
+    conn.close()
+
+
+def test_session_id_migration_is_idempotent(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path)
+    conn = init_db(db_path)  # second call must not raise
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(reviews)")}
+    assert "session_id" in cols
+    conn.close()
+
+
+def test_session_id_migration_on_existing_db(tmp_path):
+    """init_db on a DB that already has reviews (but no session_id) adds it."""
+    import sqlite3 as _sqlite3
+    db_path = str(tmp_path / "old.db")
+    # Build a DB without session_id using raw sqlite3
+    raw = _sqlite3.connect(db_path)
+    raw.execute("""CREATE TABLE reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        fact_id INTEGER NOT NULL,
+        question_id INTEGER NOT NULL,
+        reviewed_at TEXT NOT NULL,
+        grade INTEGER NOT NULL,
+        correct INTEGER NOT NULL,
+        pool TEXT NOT NULL,
+        ease_after REAL NOT NULL,
+        interval_after INTEGER NOT NULL
+    )""")
+    raw.commit()
+    raw.close()
+    conn = init_db(db_path)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(reviews)")}
+    assert "session_id" in cols
+    conn.close()
