@@ -1,7 +1,7 @@
 /* app.js — dispatches to per-page init based on data-page attribute */
 "use strict";
 
-const page = document.body.dataset.page;
+const page = document.documentElement.dataset.page;
 
 if (page === "home")      initHome();
 else if (page === "session")   initSession();
