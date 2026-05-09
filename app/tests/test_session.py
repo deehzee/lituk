@@ -213,6 +213,32 @@ def test_empty_due_pool_falls_back_to_new(conn):
     assert result.total == 3
 
 
+def test_fresh_db_all_new_fills_session(conn):
+    # All-new pool with more cards than new_cap — session must still reach size=24
+    for i in range(30):
+        _insert_fact_and_question(conn, f"Q{i}?", "Correct", 1, i + 1)
+    ui = StubUI()
+    result = run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=24, new_cap=5), ui
+    )
+    assert result.total == 24
+
+
+def test_new_cap_lifted_when_due_exhausted(conn):
+    # 5 due cards, 20 new cards, new_cap=2, size=15
+    # After due exhausts, new_cap should lift so session reaches 15
+    for i in range(5):
+        fid = _insert_fact_and_question(conn, f"Qd{i}?", "Correct", 1, i + 1)
+        _seed_due_card(conn, fid)
+    for i in range(20):
+        _insert_fact_and_question(conn, f"Qn{i}?", "Correct", 2, i + 1)
+    ui = StubUI()
+    result = run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=15, new_cap=2), ui
+    )
+    assert result.total == 15
+
+
 # ---------------------------------------------------------------------------
 # new_cap
 # ---------------------------------------------------------------------------

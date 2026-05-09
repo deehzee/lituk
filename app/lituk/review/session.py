@@ -233,7 +233,7 @@ def run_session(
             pool_label = "lapsed"
         else:
             due_ok = bool(due)
-            new_ok = bool(new) and new_drawn < config.new_cap
+            new_ok = bool(new) and (not due_ok or new_drawn < config.new_cap)
             if not due_ok and not new_ok:
                 break
 
