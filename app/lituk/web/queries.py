@@ -140,12 +140,15 @@ def missed_reviews(
         f"SELECT r.id, r.fact_id, f.question_text,"
         f"       q.choices, q.correct_letters,"
         f"       r.reviewed_at,"
+        f"       f.topic AS topic_id,"
+        f"       c.name AS chapter_name,"
         f"       (SELECT COUNT(*) FROM reviews r2"
         f"         WHERE r2.fact_id = r.fact_id AND r2.correct = 0)"
         f"         AS miss_count"
         f" FROM reviews r"
         f" JOIN facts f ON f.id = r.fact_id"
         f" JOIN questions q ON q.id = r.question_id"
+        f" LEFT JOIN chapters c ON c.id = f.topic"
         f" WHERE {where}"
         f" ORDER BY r.reviewed_at DESC",
         params,
@@ -158,6 +161,8 @@ def missed_reviews(
             "choices": r["choices"],
             "correct_letters": r["correct_letters"],
             "reviewed_at": r["reviewed_at"],
+            "topic_id": r["topic_id"],
+            "chapter_name": r["chapter_name"],
             "miss_count": r["miss_count"],
         }
         for r in rows

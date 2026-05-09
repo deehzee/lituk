@@ -303,7 +303,7 @@ function initMissed() {
         const tbody = document.getElementById("missed-body");
         tbody.innerHTML = "";
         if (rows.length === 0) {
-          tbody.innerHTML = "<tr><td colspan='4'>No missed questions.</td></tr>";
+          tbody.innerHTML = "<tr><td colspan='5'>No missed questions.</td></tr>";
           return;
         }
         rows.forEach(r => {
@@ -320,6 +320,7 @@ function initMissed() {
           tr.innerHTML =
             `<td>${escHtml(r.question_text)}</td>
              <td>${escHtml(correctText)}</td>
+             <td>${escHtml(r.chapter_name || "—")}</td>
              <td>${dt}</td>
              <td>${r.miss_count}</td>`;
           tbody.appendChild(tr);
@@ -327,7 +328,7 @@ function initMissed() {
       })
       .catch(err => {
         document.getElementById("missed-body").innerHTML =
-          "<tr><td colspan='4'>Error: " + err + "</td></tr>";
+          "<tr><td colspan='5'>Error: " + err + "</td></tr>";
       });
   }
 
