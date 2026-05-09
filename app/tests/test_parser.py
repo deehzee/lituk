@@ -1,9 +1,12 @@
+import json
+
 from tests.conftest import PDF_TEST_1
 
 from lituk.ingest.parser import (
     clean_text,
     extract_raw,
     parse_answers_block,
+    parse_pdf,
     parse_questions_block,
 )
 
@@ -158,3 +161,37 @@ def test_parse_answers_block_explanation_excludes_answer_lines():
     answers = parse_answers_block(_SAMPLE_A_BLOCK)
     assert "A - The Prime Minister" not in answers[2]["explanation"]
     assert "Since 1958" in answers[2]["explanation"]
+
+
+def test_parse_pdf_question_count():
+    rows = parse_pdf(str(PDF_TEST_1), test_num=1)
+    assert len(rows) == 24
+
+
+def test_parse_pdf_first_question():
+    rows = parse_pdf(str(PDF_TEST_1), test_num=1)
+    q = rows[0]
+    assert q["q_number"] == 1
+    assert "Lent" in q["question_text"]
+    assert q["correct_letters"] == ["A"]
+    assert q["source_test"] == 1
+
+
+def test_parse_pdf_true_false_question():
+    rows = parse_pdf(str(PDF_TEST_1), test_num=1)
+    q = next(r for r in rows if r["q_number"] == 12)
+    assert q["is_true_false"] == 1
+
+
+def test_parse_pdf_multi_answer_question():
+    rows = parse_pdf(str(PDF_TEST_1), test_num=1)
+    q = next(r for r in rows if r["q_number"] == 20)
+    assert q["is_multi"] == 1
+    assert len(q["correct_letters"]) == 2
+
+
+def test_parse_pdf_choices_is_json_string():
+    rows = parse_pdf(str(PDF_TEST_1), test_num=1)
+    choices = json.loads(rows[0]["choices"])
+    assert isinstance(choices, list)
+    assert len(choices) == 4

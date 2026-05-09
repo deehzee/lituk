@@ -1,9 +1,11 @@
+import json
 import re
 import subprocess
 
 
 _ANSWER_LINE_RE = re.compile(r'^([A-D]) - .+$')
 _ANSWER_NUM_SPLIT = re.compile(r'\n(\d+)\.\n')
+_ANSWERS_SPLIT = re.compile(r'\nAnswers\n')
 _CHOICE_LINE_RE = re.compile(r'^([A-D])\.$')
 _DATE_RE = re.compile(r'\d{2}/\d{2}/\d{4},\s*\d{2}:\d{2}')
 _PAGENUM_RE = re.compile(r'^\d+/\d+$', re.MULTILINE)
@@ -105,3 +107,38 @@ def parse_answers_block(block: str) -> list[dict]:
             'explanation': ' '.join(explanation_lines),
         })
     return answers
+
+
+def parse_pdf(pdf_path: str, test_num: int) -> list[dict]:
+    raw = extract_raw(pdf_path)
+    text = clean_text(raw)
+
+    halves = _ANSWERS_SPLIT.split(text, maxsplit=1)
+    if len(halves) != 2:
+        raise ValueError(f"No 'Answers' section found in {pdf_path}")
+
+    q_block, a_block = halves
+    questions = parse_questions_block(q_block)
+    answers = parse_answers_block('\n' + a_block)
+    ans_map = {a['q_number']: a for a in answers}
+
+    rows = []
+    for q in questions:
+        n = q['q_number']
+        ans = ans_map.get(n, {'correct_letters': [], 'explanation': ''})
+        letter_to_text = dict(zip(q['choice_letters'], q['choices']))
+        correct_texts = [
+            letter_to_text.get(l, l) for l in ans['correct_letters']
+        ]
+        rows.append({
+            'source_test':         test_num,
+            'q_number':            n,
+            'question_text':       q['question_text'],
+            'choices':             json.dumps(q['choices']),
+            'correct_letters':     ans['correct_letters'],
+            'correct_answer_text': ', '.join(correct_texts),
+            'explanation':         ans.get('explanation', ''),
+            'is_true_false':       int(q['is_true_false']),
+            'is_multi':            int(q['is_multi']),
+        })
+    return rows
