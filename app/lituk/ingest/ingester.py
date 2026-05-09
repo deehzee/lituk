@@ -1,4 +1,6 @@
 import json
+import pathlib
+import re
 import sqlite3
 
 from lituk.db import get_or_create_fact
@@ -39,3 +41,17 @@ def ingest_pdf(
         inserted += conn.execute("SELECT changes()").fetchone()[0]
     conn.commit()
     return inserted
+
+
+def ingest_all(db_path: str, mock_tests_dir: str) -> None:
+    from lituk.db import init_db
+    conn = init_db(db_path)
+    pdf_dir = pathlib.Path(mock_tests_dir)
+    _num_re = re.compile(r'Practice Test #(\d+) of')
+    for pdf_path in sorted(pdf_dir.glob("*.pdf")):
+        m = _num_re.search(pdf_path.name)
+        if not m:
+            continue
+        test_num = int(m.group(1))
+        ingest_pdf(conn, str(pdf_path), test_num)
+    conn.close()

@@ -51,3 +51,39 @@ def test_ingest_pdf_choices_valid_json(tmp_path):
     choices = json.loads(row["choices"])
     assert isinstance(choices, list)
     assert len(choices) == 4
+
+
+from tests.conftest import MOCK_TESTS_DIR
+from lituk.ingest.ingester import ingest_all
+
+
+def test_ingest_all_question_count(tmp_path):
+    import sqlite3
+    db_path = str(tmp_path / "lituk.db")
+    ingest_all(db_path, str(MOCK_TESTS_DIR))
+    conn = sqlite3.connect(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+    conn.close()
+    assert count == 45 * 24
+
+
+def test_ingest_all_facts_deduplicated(tmp_path):
+    import sqlite3
+    db_path = str(tmp_path / "lituk.db")
+    ingest_all(db_path, str(MOCK_TESTS_DIR))
+    conn = sqlite3.connect(db_path)
+    facts = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+    conn.close()
+    assert 1000 < facts < 45 * 24
+
+
+def test_ingest_all_skips_non_matching_files(tmp_path):
+    import sqlite3
+    fake = tmp_path / "not_a_test.pdf"
+    fake.write_bytes(b"")
+    db_path = str(tmp_path / "lituk.db")
+    ingest_all(db_path, str(tmp_path))
+    conn = sqlite3.connect(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
+    conn.close()
+    assert count == 0
