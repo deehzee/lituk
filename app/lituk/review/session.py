@@ -218,6 +218,7 @@ def run_session(
 ) -> SessionResult:
     due: list[int] = _due_pool(conn, today, topics)
     new: list[int] = _new_pool(conn, topics)
+    rng.shuffle(new)
     due_post, new_post = _load_posteriors(conn)
 
     lapsed: deque[int] = deque()
@@ -290,6 +291,7 @@ def run_drill_session(
 ) -> SessionResult:
     """Session using only facts with prior lapses. No bandit; updates SM-2."""
     pool: list[int] = _drill_pool(conn, topics)
+    rng.shuffle(pool)
 
     lapsed: deque[int] = deque()
     correct_count = 0
