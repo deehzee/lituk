@@ -94,3 +94,59 @@ def test_load_summaries_includes_filenames(tmp_path):
     (tmp_path / "ch3_history.md").write_text("History content")
     result = load_summaries(str(tmp_path))
     assert "ch3_history" in result
+
+
+def test_tag_facts_strips_markdown_code_blocks(conn):
+    fid = _insert_fact(conn, "What is Parliament?", "The legislature")
+    client = MagicMock()
+
+    def _respond_with_fences(**kwargs):
+        response = MagicMock()
+        msg = MagicMock()
+        msg.text = f'```json\n[{{"id": {fid}, "topic": 3}}]\n```'
+        response.content = [msg]
+        return response
+
+    client.messages.create.side_effect = _respond_with_fences
+    count = tag_facts(conn, client, "SUMMARIES")
+    assert count == 1
+    row = conn.execute("SELECT topic FROM facts WHERE id=?", (fid,)).fetchone()
+    assert row["topic"] == 3
+
+
+def test_main_tags_and_exits(tmp_path):
+    import runpy
+    from unittest.mock import patch
+
+    db_path = str(tmp_path / "test.db")
+    conn = init_db(db_path)
+    _insert_fact(conn, "What is Parliament?", "The legislature")
+    conn.close()
+
+    summaries_dir = str(tmp_path / "summaries")
+    import os
+    os.makedirs(summaries_dir)
+    (tmp_path / "summaries" / "ch1.md").write_text("Chapter 1")
+
+    mock_client = _mock_client_dynamic()
+
+    with patch("anthropic.Anthropic", return_value=mock_client), \
+         patch("sys.stdout"):
+        with pytest.raises(SystemExit) as exc:
+            from lituk.tag import main
+            main(["--db", db_path, "--summaries", summaries_dir])
+    assert exc.value.code == 0
+
+    conn2 = init_db(db_path)
+    row = conn2.execute("SELECT topic FROM facts").fetchone()
+    conn2.close()
+    assert row["topic"] == 3
+
+
+def test_tag_main_module_calls_main():
+    import runpy
+    from unittest.mock import patch
+
+    with patch("lituk.tag.main") as mock_main:
+        runpy.run_module("lituk.tag", run_name="__main__")
+    mock_main.assert_called_once_with()

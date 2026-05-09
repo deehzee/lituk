@@ -271,6 +271,22 @@ def test_review_main_module_calls_main(tmp_path):
     mock_main.assert_called_once_with()
 
 
+def test_parse_topics_rejects_non_integer(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("sys.stderr", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--topic", "abc"])
+
+
+def test_parse_topics_rejects_out_of_range(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("sys.stderr", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--topic", "6"])
+
+
 def test_main_topic_flag_accepted(tmp_path):
     db_path = str(tmp_path / "test.db")
     conn = init_db(db_path)
