@@ -1,8 +1,9 @@
 import json
+import sqlite3
 
 from lituk.db import init_db
-from lituk.ingest.ingester import ingest_pdf
-from tests.conftest import PDF_TEST_1
+from lituk.ingest.ingester import ingest_all, ingest_pdf
+from tests.conftest import MOCK_TESTS_DIR, PDF_TEST_1
 
 
 def test_ingest_pdf_row_count(tmp_path):
@@ -53,12 +54,7 @@ def test_ingest_pdf_choices_valid_json(tmp_path):
     assert len(choices) == 4
 
 
-from tests.conftest import MOCK_TESTS_DIR
-from lituk.ingest.ingester import ingest_all
-
-
 def test_ingest_all_question_count(tmp_path):
-    import sqlite3
     db_path = str(tmp_path / "lituk.db")
     ingest_all(db_path, str(MOCK_TESTS_DIR))
     conn = sqlite3.connect(db_path)
@@ -68,7 +64,6 @@ def test_ingest_all_question_count(tmp_path):
 
 
 def test_ingest_all_facts_deduplicated(tmp_path):
-    import sqlite3
     db_path = str(tmp_path / "lituk.db")
     ingest_all(db_path, str(MOCK_TESTS_DIR))
     conn = sqlite3.connect(db_path)
@@ -78,7 +73,6 @@ def test_ingest_all_facts_deduplicated(tmp_path):
 
 
 def test_ingest_all_skips_non_matching_files(tmp_path):
-    import sqlite3
     fake = tmp_path / "not_a_test.pdf"
     fake.write_bytes(b"")
     db_path = str(tmp_path / "lituk.db")

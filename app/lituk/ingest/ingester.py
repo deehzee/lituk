@@ -3,7 +3,7 @@ import pathlib
 import re
 import sqlite3
 
-from lituk.db import get_or_create_fact
+from lituk.db import get_or_create_fact, init_db
 from lituk.ingest.parser import parse_pdf
 
 
@@ -44,7 +44,6 @@ def ingest_pdf(
 
 
 def ingest_all(db_path: str, mock_tests_dir: str) -> None:
-    from lituk.db import init_db
     conn = init_db(db_path)
     pdf_dir = pathlib.Path(mock_tests_dir)
     _num_re = re.compile(r'Practice Test #(\d+) of')
