@@ -82,6 +82,13 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn.executescript(_SCHEMA)
     conn.executescript(_CHAPTER_SEED)
     conn.executescript(_POOL_SEED)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(reviews)")}
+    if "session_id" not in cols:
+        conn.execute("ALTER TABLE reviews ADD COLUMN session_id TEXT")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_reviews_session"
+        " ON reviews(session_id)"
+    )
     conn.commit()
     return conn
 
