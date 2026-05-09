@@ -72,7 +72,7 @@ def parse_questions_block(block: str) -> list[dict]:
             and {c.lower() for c in choices}
             == {'true', 'false'}
         )
-        is_multi = bool(re.search(r'\bTWO\b', q_text))
+        is_multi = bool(re.search(r'\bTWO\b', q_text, re.IGNORECASE))
 
         questions.append({
             'q_number': qnum,
