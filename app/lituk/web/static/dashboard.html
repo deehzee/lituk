@@ -1,1 +1,63 @@
-<!doctype html><html><body>dashboard</body></html>
+<!doctype html>
+<html lang="en" data-page="dashboard">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LITUK — Dashboard</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="container">
+  <header>
+    <a href="/">&larr; Home</a>
+    <h1>Dashboard</h1>
+  </header>
+
+  <!-- Headline tiles -->
+  <div class="tiles">
+    <div class="tile">
+      <h3>Coverage</h3>
+      <p class="big" id="tile-coverage">—</p>
+      <small id="tile-coverage-detail"></small>
+    </div>
+    <div class="tile">
+      <h3>Streak</h3>
+      <p class="big" id="tile-streak">—</p>
+      <small>days</small>
+    </div>
+    <div class="tile">
+      <h3>Due today</h3>
+      <p class="big" id="tile-due">—</p>
+      <small>cards</small>
+    </div>
+  </div>
+
+  <!-- Per-chapter accuracy -->
+  <section>
+    <h2>Accuracy by chapter</h2>
+    <div id="chapter-bars" aria-busy="true"></div>
+  </section>
+
+  <!-- Recent sessions -->
+  <section>
+    <h2>Recent sessions</h2>
+    <table id="sessions-table">
+      <thead>
+        <tr><th>Date</th><th>Score</th></tr>
+      </thead>
+      <tbody id="sessions-body">
+        <tr><td colspan="2" aria-busy="true">Loading…</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Weak facts -->
+  <section>
+    <h2>Weak facts <small>(most lapses)</small></h2>
+    <ul id="weak-list" aria-busy="true"></ul>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

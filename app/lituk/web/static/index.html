@@ -1,1 +1,46 @@
-<!doctype html><html><body>index</body></html>
+<!doctype html>
+<html lang="en" data-page="home">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LITUK Study</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="container">
+  <header>
+    <h1>Life in the UK — Study</h1>
+    <nav>
+      <a href="/dashboard">Dashboard</a> &nbsp;·&nbsp;
+      <a href="/missed">Missed questions</a>
+    </nav>
+  </header>
+  <section>
+    <h2>
+      Start a session
+      <span class="due-pill hidden" id="due-pill">? due</span>
+    </h2>
+    <form id="start-form">
+      <fieldset>
+        <legend>Mode</legend>
+        <label>
+          <input type="radio" name="mode" value="regular" checked>
+          Regular (SM-2 + bandit)
+        </label>
+        <label>
+          <input type="radio" name="mode" value="drill">
+          Drill (missed facts only)
+        </label>
+      </fieldset>
+      <fieldset>
+        <legend>Chapters (leave blank for all)</legend>
+        <div id="chapter-checks"></div>
+      </fieldset>
+      <button type="submit">Start session</button>
+    </form>
+  </section>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

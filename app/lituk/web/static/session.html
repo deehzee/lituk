@@ -1,1 +1,57 @@
-<!doctype html><html><body>session</body></html>
+<!doctype html>
+<html lang="en" data-page="session">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LITUK — Session</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="container">
+  <header>
+    <a href="/">&larr; Home</a>
+    <span id="session-progress" style="float:right"></span>
+  </header>
+
+  <!-- Prompt view -->
+  <div id="view-prompt" class="hidden">
+    <div class="card">
+      <p id="question-text"></p>
+      <div id="choices" class="choices"></div>
+      <button id="submit-multi" class="hidden" style="margin-top:1rem">
+        Submit answer
+      </button>
+    </div>
+  </div>
+
+  <!-- Feedback view -->
+  <div id="view-feedback" class="hidden">
+    <div class="card">
+      <p id="fb-question-text"></p>
+      <div id="fb-choices" class="choices"></div>
+      <div id="grade-area" style="margin-top:1rem">
+        <p id="grade-label"></p>
+        <div class="grade-btns" id="grade-btns"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary view -->
+  <div id="view-summary" class="hidden">
+    <div class="summary-box card">
+      <h2>Session complete</h2>
+      <p id="summary-score"></p>
+      <p id="summary-weak"></p>
+      <a href="/" role="button">Back to home</a>
+    </div>
+  </div>
+
+  <!-- Loading / starting -->
+  <div id="view-loading">
+    <p aria-busy="true">Starting session…</p>
+  </div>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>

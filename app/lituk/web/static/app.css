@@ -1,0 +1,42 @@
+/* Card layout */
+.card { padding: 1.5rem; border-radius: 8px;
+        border: 1px solid var(--pico-muted-border-color); margin-bottom: 1rem; }
+
+/* Choice buttons */
+.choices { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
+.choice-btn { text-align: left; }
+.choice-btn.selected { outline: 3px solid var(--pico-primary); }
+.choice-btn.correct  { background: var(--pico-ins-color); color: #fff; }
+.choice-btn.wrong    { background: var(--pico-del-color); color: #fff; }
+
+/* Grade buttons */
+.grade-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+.grade-btn[data-grade="3"] { background: #e67e22; color: #fff; border: none; }
+.grade-btn[data-grade="4"] { background: #27ae60; color: #fff; border: none; }
+.grade-btn[data-grade="5"] { background: #2980b9; color: #fff; border: none; }
+
+/* Dashboard CSS bars */
+.bar-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.4rem; }
+.bar-label { min-width: 200px; font-size: 0.85rem; }
+.bar-track { flex: 1; background: var(--pico-muted-border-color);
+             border-radius: 4px; height: 14px; }
+.bar-fill  { height: 100%; border-radius: 4px; background: var(--pico-primary);
+             transition: width 0.3s; }
+.bar-pct   { min-width: 3rem; font-size: 0.85rem; text-align: right; }
+
+/* Due pill */
+.due-pill { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px;
+            background: var(--pico-primary); color: #fff; font-size: 0.8rem;
+            margin-left: 0.5rem; }
+
+/* Stat tiles */
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+         gap: 1rem; margin-bottom: 2rem; }
+.tile  { padding: 1.25rem; border: 1px solid var(--pico-muted-border-color);
+         border-radius: 8px; text-align: center; }
+.tile h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--pico-muted-color); }
+.tile .big { font-size: 2rem; font-weight: bold; margin: 0; }
+
+/* Misc */
+.hidden { display: none !important; }
+.summary-box { text-align: center; padding: 2rem; }

@@ -1,1 +1,56 @@
-<!doctype html><html><body>missed</body></html>
+<!doctype html>
+<html lang="en" data-page="missed">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LITUK — Missed Questions</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<main class="container">
+  <header>
+    <a href="/">&larr; Home</a>
+    <h1>Missed Questions</h1>
+  </header>
+
+  <!-- Filters -->
+  <details open>
+    <summary>Filters</summary>
+    <form id="filter-form" style="margin-top:0.75rem">
+      <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:flex-end">
+        <label style="flex:1; min-width:180px">
+          Chapters
+          <div id="miss-chapter-checks" style="display:flex; gap:0.5rem;
+               flex-wrap:wrap; margin-top:0.25rem"></div>
+        </label>
+        <label style="flex:1; min-width:180px">
+          Since
+          <input type="date" id="miss-since" name="since">
+        </label>
+        <button type="submit">Apply</button>
+        <button type="button" id="drill-btn" class="secondary">
+          Drill these
+        </button>
+      </div>
+    </form>
+  </details>
+
+  <!-- Results table -->
+  <table style="margin-top:1rem">
+    <thead>
+      <tr>
+        <th>Question</th>
+        <th>Correct answer</th>
+        <th>Last missed</th>
+        <th>Total misses</th>
+      </tr>
+    </thead>
+    <tbody id="missed-body">
+      <tr><td colspan="4" aria-busy="true">Loading…</td></tr>
+    </tbody>
+  </table>
+</main>
+<script src="/static/app.js"></script>
+</body>
+</html>
