@@ -31,22 +31,35 @@ class UI(Protocol):
     def show_summary(self, result: SessionResult) -> None: ...
 
 
-def _due_pool(conn: sqlite3.Connection, today: date) -> list[int]:
-    rows = conn.execute(
-        "SELECT fact_id FROM card_state WHERE due_date <= ?"
-        " ORDER BY ease_factor ASC, due_date ASC",
-        (today.isoformat(),),
-    ).fetchall()
-    return [r["fact_id"] for r in rows]
+def _due_pool(
+    conn: sqlite3.Connection, today: date, topics: list[int] | None = None
+) -> list[int]:
+    topic_sql = (
+        f" AND f.topic IN ({','.join('?' * len(topics))})" if topics else ""
+    )
+    sql = (
+        "SELECT cs.fact_id FROM card_state cs"
+        " JOIN facts f ON f.id = cs.fact_id"
+        f" WHERE cs.due_date <= ?{topic_sql}"
+        " ORDER BY cs.ease_factor ASC, cs.due_date ASC"
+    )
+    params: list = [today.isoformat()] + (list(topics) if topics else [])
+    return [r["fact_id"] for r in conn.execute(sql, params).fetchall()]
 
 
-def _new_pool(conn: sqlite3.Connection) -> list[int]:
-    rows = conn.execute(
+def _new_pool(
+    conn: sqlite3.Connection, topics: list[int] | None = None
+) -> list[int]:
+    topic_sql = (
+        f" AND f.topic IN ({','.join('?' * len(topics))})" if topics else ""
+    )
+    sql = (
         "SELECT f.id FROM facts f"
         " LEFT JOIN card_state cs ON f.id = cs.fact_id"
-        " WHERE cs.fact_id IS NULL"
-    ).fetchall()
-    return [r["id"] for r in rows]
+        f" WHERE cs.fact_id IS NULL{topic_sql}"
+    )
+    params: list = list(topics) if topics else []
+    return [r["id"] for r in conn.execute(sql, params).fetchall()]
 
 
 def _load_posteriors(conn: sqlite3.Connection) -> tuple[PoolPosterior, PoolPosterior]:
@@ -150,9 +163,10 @@ def run_session(
     rng: random.Random,
     config: SessionConfig,
     ui: UI,
+    topics: list[int] | None = None,
 ) -> SessionResult:
-    due: list[int] = _due_pool(conn, today)
-    new: list[int] = _new_pool(conn)
+    due: list[int] = _due_pool(conn, today, topics)
+    new: list[int] = _new_pool(conn, topics)
     due_post, new_post = _load_posteriors(conn)
 
     lapsed: deque[int] = deque()

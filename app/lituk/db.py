@@ -2,12 +2,19 @@ import sqlite3
 
 
 _SCHEMA = """
+CREATE TABLE IF NOT EXISTS chapters (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS facts (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     question_text       TEXT    NOT NULL,
     correct_answer_text TEXT    NOT NULL,
+    topic               INTEGER REFERENCES chapters(id),
     UNIQUE (question_text, correct_answer_text)
 );
+CREATE INDEX IF NOT EXISTS idx_facts_topic ON facts(topic);
 
 CREATE TABLE IF NOT EXISTS questions (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -54,6 +61,15 @@ CREATE TABLE IF NOT EXISTS reviews (
 CREATE INDEX IF NOT EXISTS idx_reviews_fact ON reviews(fact_id);
 """
 
+_CHAPTER_SEED = """
+INSERT OR IGNORE INTO chapters VALUES (1, 'Values and Principles of the UK');
+INSERT OR IGNORE INTO chapters VALUES (2, 'What is the UK');
+INSERT OR IGNORE INTO chapters VALUES (3, 'A Long and Illustrious History');
+INSERT OR IGNORE INTO chapters VALUES (4, 'A Modern Thriving Society');
+INSERT OR IGNORE INTO chapters VALUES
+    (5, 'The UK Government, the Law and Your Role');
+"""
+
 _POOL_SEED = """
 INSERT OR IGNORE INTO pool_state (pool, alpha, beta) VALUES ('due', 1.0, 1.0);
 INSERT OR IGNORE INTO pool_state (pool, alpha, beta) VALUES ('new', 1.0, 1.0);
@@ -64,6 +80,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    conn.executescript(_CHAPTER_SEED)
     conn.executescript(_POOL_SEED)
     conn.commit()
     return conn

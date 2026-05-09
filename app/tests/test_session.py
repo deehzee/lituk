@@ -17,7 +17,8 @@ TODAY = date(2026, 5, 9)
 # ---------------------------------------------------------------------------
 
 def _insert_fact_and_question(conn, q_text, a_text, source_test, q_num,
-                               choices=None, correct_letters=None):
+                               choices=None, correct_letters=None,
+                               topic=None):
     if choices is None:
         choices = ["Correct", "Wrong1", "Wrong2", "Wrong3"]
     if correct_letters is None:
@@ -32,6 +33,9 @@ def _insert_fact_and_question(conn, q_text, a_text, source_test, q_num,
         "SELECT id FROM facts WHERE question_text=? AND correct_answer_text=?",
         (q_text, a_text),
     ).fetchone()["id"]
+    if topic is not None:
+        conn.execute("UPDATE facts SET topic=? WHERE id=?", (topic, fid))
+        conn.commit()
     conn.execute(
         "INSERT OR IGNORE INTO questions"
         " (source_test, q_number, question_text, choices, correct_letters,"
@@ -273,3 +277,123 @@ def test_weak_facts_empty_on_all_correct(conn):
         conn, TODAY, random.Random(0), SessionConfig(size=3), StubUI()
     )
     assert result.weak_facts == []
+
+
+# ---------------------------------------------------------------------------
+# Topic filter
+# ---------------------------------------------------------------------------
+
+def test_topic_filter_excludes_other_chapters(conn):
+    fid_ch3 = _insert_fact_and_question(conn, "Q_ch3?", "A", 1, 1, topic=3)
+    fid_ch4 = _insert_fact_and_question(conn, "Q_ch4?", "A", 1, 2, topic=4)
+    ui = StubUI()
+    run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
+        topics=[3],
+    )
+    shown_facts = {p.fact_id for p in ui.prompts_shown}
+    assert fid_ch3 in shown_facts
+    assert fid_ch4 not in shown_facts
+
+
+def test_topic_filter_multi_chapter(conn):
+    fid3 = _insert_fact_and_question(conn, "Q3?", "A", 1, 1, topic=3)
+    fid4 = _insert_fact_and_question(conn, "Q4?", "A", 1, 2, topic=4)
+    fid5 = _insert_fact_and_question(conn, "Q5?", "A", 1, 3, topic=5)
+    ui = StubUI()
+    run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
+        topics=[3, 4],
+    )
+    shown_facts = {p.fact_id for p in ui.prompts_shown}
+    assert fid3 in shown_facts
+    assert fid4 in shown_facts
+    assert fid5 not in shown_facts
+
+
+def test_topic_filter_none_includes_all(conn):
+    fid3 = _insert_fact_and_question(conn, "Q3?", "A", 1, 1, topic=3)
+    fid_null = _insert_fact_and_question(conn, "Qnull?", "A", 1, 2, topic=None)
+    ui = StubUI()
+    run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
+        topics=None,
+    )
+    shown_facts = {p.fact_id for p in ui.prompts_shown}
+    assert fid3 in shown_facts
+    assert fid_null in shown_facts
+
+
+def test_topic_filter_excludes_null_topic_facts(conn):
+    _insert_fact_and_question(conn, "Qnull?", "A", 1, 1, topic=None)
+    fid3 = _insert_fact_and_question(conn, "Q3?", "A", 1, 2, topic=3)
+    ui = StubUI()
+    run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
+        topics=[3],
+    )
+    shown_facts = {p.fact_id for p in ui.prompts_shown}
+    assert fid3 in shown_facts
+    null_fid = conn.execute(
+        "SELECT id FROM facts WHERE question_text='Qnull?'"
+    ).fetchone()["id"]
+    assert null_fid not in shown_facts
+
+
+def test_topic_filter_due_pool(conn):
+    fid3 = _insert_fact_and_question(conn, "Q3?", "A", 1, 1, topic=3)
+    fid4 = _insert_fact_and_question(conn, "Q4?", "A", 1, 2, topic=4)
+    _seed_due_card(conn, fid3)
+    _seed_due_card(conn, fid4)
+    ui = StubUI()
+    run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
+        topics=[3],
+    )
+    shown_facts = {p.fact_id for p in ui.prompts_shown}
+    assert fid3 in shown_facts
+    assert fid4 not in shown_facts
+
+
+# ---------------------------------------------------------------------------
+# End-to-end smoke: tag → session with topic filter
+# ---------------------------------------------------------------------------
+
+def test_e2e_tag_then_session_with_topic_filter(conn):
+    import re as _re
+    import json as _json
+    from unittest.mock import MagicMock
+    from lituk.tag.tagger import tag_facts
+
+    fid3 = _insert_fact_and_question(conn, "History Q?", "History A", 1, 1)
+    fid5 = _insert_fact_and_question(conn, "Civics Q?", "Civics A", 1, 2)
+
+    mapping = {fid3: 3, fid5: 5}
+
+    def _respond(**kwargs):
+        text = kwargs["messages"][0]["content"]
+        ids = [int(m) for m in _re.findall(r"ID=(\d+):", text)]
+        response = MagicMock()
+        msg = MagicMock()
+        msg.text = _json.dumps(
+            [{"id": fid, "topic": mapping.get(fid, 3)} for fid in ids]
+        )
+        response.content = [msg]
+        return response
+
+    mock_client = MagicMock()
+    mock_client.messages.create.side_effect = _respond
+    tag_facts(conn, mock_client, "SUMMARIES")
+
+    ui = StubUI()
+    run_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
+        topics=[3],
+    )
+
+    review_fact_ids = {
+        row["fact_id"]
+        for row in conn.execute("SELECT fact_id FROM reviews").fetchall()
+    }
+    assert fid3 in review_fact_ids
+    assert fid5 not in review_fact_ids
