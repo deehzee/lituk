@@ -19,7 +19,7 @@ from lituk.review.presenter import Prompt
 def _insert_fact_and_question(conn, q_text="Q?", a_text="Correct",
                                source_test=1, q_num=1,
                                choices=None, correct_letters=None,
-                               is_multi=0, is_true_false=0):
+                               is_multi=0, is_true_false=0, topic=None):
     if choices is None:
         choices = ["Correct", "Wrong1", "Wrong2", "Wrong3"]
     if correct_letters is None:
@@ -34,6 +34,9 @@ def _insert_fact_and_question(conn, q_text="Q?", a_text="Correct",
         "SELECT id FROM facts WHERE question_text=? AND correct_answer_text=?",
         (q_text, a_text),
     ).fetchone()["id"]
+    if topic is not None:
+        conn.execute("UPDATE facts SET topic=? WHERE id=?", (topic, fid))
+        conn.commit()
     conn.execute(
         "INSERT OR IGNORE INTO questions"
         " (source_test, q_number, question_text, choices, correct_letters,"
@@ -266,3 +269,18 @@ def test_review_main_module_calls_main(tmp_path):
     with patch("lituk.review.main") as mock_main:
         runpy.run_module("lituk.review", run_name="__main__")
     mock_main.assert_called_once_with()
+
+
+def test_main_topic_flag_accepted(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    conn = init_db(db_path)
+    _insert_fact_and_question(conn, topic=3)
+    conn.close()
+
+    rng = random.Random(0)
+    inputs = iter(["A", "g"])
+    with patch("builtins.input", side_effect=inputs), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit) as exc:
+            main(["--db", db_path, "--size", "1", "--topic", "3"], _rng=rng)
+    assert exc.value.code == 0
