@@ -200,10 +200,7 @@ def test_parse_pdf_choices_is_json_string():
     assert len(choices) == 4
 
 
-def test_parse_pdf_raises_on_missing_answers_section(tmp_path):
-    fake_pdf = tmp_path / "fake.pdf"
-    # Create a minimal valid PDF with no Answers section
-    # We can't easily create a real PDF, so patch extract_raw instead
+def test_parse_pdf_raises_on_missing_answers_section():
     with mock.patch(
         "lituk.ingest.parser.extract_raw", return_value="No answers here"
     ):
