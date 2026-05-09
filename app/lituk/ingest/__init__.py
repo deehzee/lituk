@@ -4,9 +4,7 @@ import pathlib
 from lituk.ingest.ingester import ingest_all
 
 _DEFAULT_DB = pathlib.Path(__file__).parents[2] / "data" / "lituk.db"
-_DEFAULT_DIR = (
-    pathlib.Path(__file__).parents[5] / "britizen" / "mock_tests"
-)
+_DEFAULT_DIR = pathlib.Path(__file__).parents[3] / "britizen" / "mock_tests"
 
 
 def main() -> None:
