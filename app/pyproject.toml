@@ -6,6 +6,7 @@ dependencies = []
 
 [project.scripts]
 lituk-ingest = "lituk.ingest:main"
+lituk-review = "lituk.review:main"
 
 [build-system]
 requires = ["hatchling"]

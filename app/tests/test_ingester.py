@@ -1,7 +1,11 @@
 import json
+import runpy
 import sqlite3
+from io import StringIO
+from unittest.mock import patch
 
 from lituk.db import init_db
+from lituk.ingest import main as ingest_main
 from lituk.ingest.ingester import ingest_all, ingest_pdf
 from tests.conftest import MOCK_TESTS_DIR, PDF_TEST_1
 
@@ -81,3 +85,19 @@ def test_ingest_all_skips_non_matching_files(tmp_path):
     count = conn.execute("SELECT COUNT(*) FROM questions").fetchone()[0]
     conn.close()
     assert count == 0
+
+
+def test_ingest_main_cli(tmp_path):
+    db_path = str(tmp_path / "lituk.db")
+    with patch("sys.argv", ["lituk-ingest", "--db", db_path,
+                             "--dir", str(MOCK_TESTS_DIR)]), \
+         patch("lituk.ingest.ingest_all") as mock_ingest, \
+         patch("sys.stdout", new_callable=StringIO):
+        ingest_main()
+    mock_ingest.assert_called_once_with(db_path, str(MOCK_TESTS_DIR))
+
+
+def test_ingest_main_module_calls_main():
+    with patch("lituk.ingest.main") as mock_main:
+        runpy.run_module("lituk.ingest", run_name="__main__")
+    mock_main.assert_called_once_with()
