@@ -2,12 +2,13 @@
 name = "lituk"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["anthropic"]
+dependencies = ["anthropic", "flask>=3.0"]
 
 [project.scripts]
 lituk-ingest = "lituk.ingest:main"
 lituk-review = "lituk.review:main"
 lituk-tag = "lituk.tag:main"
+lituk-web = "lituk.web.server:main"
 
 [build-system]
 requires = ["hatchling"]

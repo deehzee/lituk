@@ -58,9 +58,10 @@ class WebUI:
             "choices": prompt.choices,
             "correct_indices": prompt.correct_indices,
         })
-        if not correct:
-            return 0
-        return self._grade_q.get()
+        # Always block: on miss the client posts any grade (we return 0 and
+        # the session loop ignores our return); on hit we return the grade.
+        grade = self._grade_q.get()
+        return grade if correct else 0
 
     def show_summary(self, result: SessionResult) -> None:
         self._set_state("summary", asdict(result))
@@ -105,20 +106,21 @@ def start_session(
         conn = init_db(_db_path)
         today = date.today()
         config = SessionConfig()
+        import random as _random
+        rng = _random.Random()
         try:
             if mode == "drill":
                 run_drill_session(
-                    conn, today, __import__("random").Random(), config,
+                    conn, today, rng, config,
                     web_ui, topics=chapters or None, session_id=sid,
                 )
             else:
                 run_session(
-                    conn, today, __import__("random").Random(), config,
+                    conn, today, rng, config,
                     web_ui, topics=chapters or None, session_id=sid,
                 )
         finally:
             conn.close()
-            web_ui._set_state("ended", {})
 
     t = threading.Thread(target=worker, daemon=True)
     t.start()

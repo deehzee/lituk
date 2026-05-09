@@ -97,16 +97,26 @@ def test_show_feedback_correct_transitions_to_feedback():
     assert grade == 4
 
 
-def test_show_feedback_incorrect_returns_zero_immediately():
+def test_show_feedback_incorrect_returns_zero_after_grade_submitted():
+    """On miss, show_feedback blocks until grade submitted, then returns 0."""
     ui = WebUI()
     prompt = _make_prompt(correct_indices=[1])
-    grade = ui.show_feedback(prompt, correct=False)
-    assert grade == 0
+    grades = []
+
+    def run():
+        grades.append(ui.show_feedback(prompt, correct=False))
+
+    t = threading.Thread(target=run)
+    t.start()
+    time.sleep(0.05)
     assert ui.state.kind == "feedback"
+    ui.submit_grade(4)  # any grade value; return value will be 0
+    t.join(timeout=1)
+    assert grades == [0]
 
 
-def test_show_feedback_incorrect_does_not_block():
-    """show_feedback(correct=False) must return without touching grade_q."""
+def test_show_feedback_incorrect_blocks_until_grade():
+    """show_feedback(correct=False) must block on grade_q."""
     ui = WebUI()
     prompt = _make_prompt(correct_indices=[1])
     done = threading.Event()
@@ -117,7 +127,9 @@ def test_show_feedback_incorrect_does_not_block():
 
     t = threading.Thread(target=run)
     t.start()
-    assert done.wait(timeout=1.0), "show_feedback(correct=False) blocked"
+    assert not done.wait(timeout=0.1), "show_feedback returned before grade"
+    ui.submit_grade(0)
+    assert done.wait(timeout=1.0), "show_feedback never returned after grade"
     t.join()
 
 
