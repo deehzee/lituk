@@ -1,7 +1,5 @@
 import json
 
-import pytest
-
 from lituk.db import init_db
 from lituk.ingest.ingester import ingest_pdf
 from tests.conftest import PDF_TEST_1
