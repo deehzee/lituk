@@ -2,6 +2,8 @@ import re
 import subprocess
 
 
+_ANSWER_LINE_RE = re.compile(r'^([A-D]) - .+$')
+_ANSWER_NUM_SPLIT = re.compile(r'\n(\d+)\.\n')
 _CHOICE_LINE_RE = re.compile(r'^([A-D])\.$')
 _DATE_RE = re.compile(r'\d{2}/\d{2}/\d{4},\s*\d{2}:\d{2}')
 _PAGENUM_RE = re.compile(r'^\d+/\d+$', re.MULTILINE)
@@ -79,3 +81,27 @@ def parse_questions_block(block: str) -> list[dict]:
             'is_multi': is_multi,
         })
     return questions
+
+
+def parse_answers_block(block: str) -> list[dict]:
+    parts = _ANSWER_NUM_SPLIT.split(block)
+    # parts: [preamble, num, body, num, body, ...]
+    answers = []
+    for i in range(1, len(parts), 2):
+        qnum = int(parts[i])
+        body = parts[i + 1] if i + 1 < len(parts) else ''
+        lines = [l.strip() for l in body.split('\n') if l.strip()]
+
+        correct_letters, explanation_lines = [], []
+        for line in lines:
+            if not explanation_lines and _ANSWER_LINE_RE.match(line):
+                correct_letters.append(line[0])
+            else:
+                explanation_lines.append(line)
+
+        answers.append({
+            'q_number': qnum,
+            'correct_letters': correct_letters,
+            'explanation': ' '.join(explanation_lines),
+        })
+    return answers

@@ -1,6 +1,11 @@
 from tests.conftest import PDF_TEST_1
 
-from lituk.ingest.parser import clean_text, extract_raw, parse_questions_block
+from lituk.ingest.parser import (
+    clean_text,
+    extract_raw,
+    parse_answers_block,
+    parse_questions_block,
+)
 
 
 def test_extract_raw_returns_string():
@@ -114,3 +119,42 @@ def test_parse_questions_block_no_choices():
     assert qs[0]["question_text"] == "What is this question?"
     assert qs[0]["choices"] == []
     assert qs[0]["choice_letters"] == []
+
+
+_SAMPLE_A_BLOCK = """
+1.
+A - The 40 days before Easter
+The 40 days before Easter are known as Lent.
+
+2.
+B - True
+One TV licence covers all equipment at one address.
+
+3.
+A - The Prime Minister
+D - Leaders of other main political parties
+Since 1958, the Prime Minister has had the power to nominate peers.
+"""
+
+
+def test_parse_answers_block_count():
+    answers = parse_answers_block(_SAMPLE_A_BLOCK)
+    assert len(answers) == 3
+
+
+def test_parse_answers_block_single_correct():
+    answers = parse_answers_block(_SAMPLE_A_BLOCK)
+    assert answers[0]["q_number"] == 1
+    assert answers[0]["correct_letters"] == ["A"]
+    assert "Lent" in answers[0]["explanation"]
+
+
+def test_parse_answers_block_multi_correct():
+    answers = parse_answers_block(_SAMPLE_A_BLOCK)
+    assert answers[2]["correct_letters"] == ["A", "D"]
+
+
+def test_parse_answers_block_explanation_excludes_answer_lines():
+    answers = parse_answers_block(_SAMPLE_A_BLOCK)
+    assert "A - The Prime Minister" not in answers[2]["explanation"]
+    assert "Since 1958" in answers[2]["explanation"]
