@@ -270,7 +270,7 @@ def run_session(
                 break
 
             if due_ok and new_ok:
-                arm = choose(rng, new_post, due_post)
+                arm = choose(rng, due_post, new_post)
             elif due_ok:
                 arm = "due"
             else:
