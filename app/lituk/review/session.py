@@ -280,6 +280,55 @@ def run_session(
     return result
 
 
+def run_explore_session(
+    conn: sqlite3.Connection,
+    today: date,
+    rng: random.Random,
+    config: SessionConfig,
+    ui: UI,
+    topics: list[int] | None = None,
+    session_id: str | None = None,
+) -> SessionResult:
+    """Session using only unseen facts (no card_state row). No bandit; updates SM-2."""
+    pool: list[int] = _new_pool(conn, topics)
+    rng.shuffle(pool)
+
+    lapsed: deque[int] = deque()
+    correct_count = 0
+    total = 0
+    weak: set[int] = set()
+
+    for _ in range(config.size):
+        if lapsed:
+            fact_id = lapsed.popleft()
+            pool_label = "lapsed"
+        else:
+            if not pool:
+                break
+            fact_id = pool.pop(0)
+            pool_label = "new"
+
+        correct, _ = _present_and_grade(
+            conn, today, ui, fact_id, pool_label, rng, session_id
+        )
+
+        if correct:
+            correct_count += 1
+        else:
+            weak.add(fact_id)
+            lapsed.append(fact_id)
+
+        total += 1
+
+    result = SessionResult(
+        correct=correct_count,
+        total=total,
+        weak_facts=sorted(weak),
+    )
+    ui.show_summary(result)
+    return result
+
+
 def run_drill_session(
     conn: sqlite3.Connection,
     today: date,

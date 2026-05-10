@@ -10,6 +10,7 @@ from lituk.review.session import (
     SessionConfig,
     SessionResult,
     run_drill_session,
+    run_explore_session,
     run_session,
 )
 
@@ -580,3 +581,102 @@ def test_drill_session_lapsed_in_session_reinforcement(conn):
     assert ui.prompts_shown.count(ui.prompts_shown[0]) >= 1
     shown_facts = [p.fact_id for p in ui.prompts_shown]
     assert shown_facts.count(fid) >= 2
+
+
+# ---------------------------------------------------------------------------
+# run_explore_session
+# ---------------------------------------------------------------------------
+
+def test_explore_session_empty_pool_exits_early(conn):
+    result = run_explore_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=24), StubUI()
+    )
+    assert result.total == 0
+
+
+def test_explore_session_writes_card_state_and_review(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+
+    run_explore_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI()
+    )
+
+    assert conn.execute(
+        "SELECT COUNT(*) FROM card_state WHERE fact_id=?", (fid,)
+    ).fetchone()[0] == 1
+    row = conn.execute("SELECT pool FROM reviews WHERE fact_id=?", (fid,)).fetchone()
+    assert row["pool"] == "new"
+
+
+def test_explore_session_excludes_already_explored_facts(conn):
+    fid_new = _insert_fact_and_question(conn, "Q_new?", "A", 1, 1)
+    fid_seen = _insert_fact_and_question(conn, "Q_seen?", "A", 1, 2)
+    _seed_due_card(conn, fid_seen)
+
+    ui = StubUI()
+    run_explore_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui
+    )
+    shown = {p.fact_id for p in ui.prompts_shown}
+    assert fid_new in shown
+    assert fid_seen not in shown
+
+
+def test_explore_session_lapsed_reinforcement(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+
+    class WrongThenRightUI(StubUI):
+        def __init__(self):
+            super().__init__()
+            self._call = 0
+
+        def show_prompt(self, prompt):
+            self.prompts_shown.append(prompt)
+            self._call += 1
+            if self._call == 1:
+                wrong = [i for i in range(len(prompt.choices))
+                         if i not in prompt.correct_indices]
+                return wrong[:1] if wrong else list(prompt.correct_indices)
+            return list(prompt.correct_indices)
+
+    ui = WrongThenRightUI()
+    run_explore_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
+    shown_facts = [p.fact_id for p in ui.prompts_shown]
+    assert shown_facts.count(fid) >= 2
+
+
+def test_explore_session_topic_filter(conn):
+    fid1 = _insert_fact_and_question(conn, "Q_ch1?", "A", 1, 1, topic=1)
+    fid2 = _insert_fact_and_question(conn, "Q_ch2?", "A", 1, 2, topic=2)
+
+    ui = StubUI()
+    run_explore_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=5), ui, topics=[1]
+    )
+    shown = {p.fact_id for p in ui.prompts_shown}
+    assert fid1 in shown
+    assert fid2 not in shown
+
+
+def test_explore_session_updates_sm2(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+
+    run_explore_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI()
+    )
+
+    row = conn.execute(
+        "SELECT repetitions FROM card_state WHERE fact_id=?", (fid,)
+    ).fetchone()
+    assert row["repetitions"] > 0
+
+
+def test_explore_session_session_id_written(conn):
+    _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+
+    run_explore_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI(),
+        session_id="explore-uuid",
+    )
+    row = conn.execute("SELECT session_id FROM reviews").fetchone()
+    assert row["session_id"] == "explore-uuid"
