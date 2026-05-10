@@ -227,6 +227,25 @@ def test_no_new_cap_all_new_can_fill_session(conn):
     assert new_count == 10
 
 
+def test_bandit_choose_called_with_both_pools_non_empty(conn):
+    # Mix of due and new cards forces the bandit to call choose()
+    for i in range(5):
+        fid = _insert_fact_and_question(conn, f"Qd{i}?", "Correct", 1, i + 1)
+        _seed_due_card(conn, fid)
+    for i in range(5):
+        _insert_fact_and_question(conn, f"Qn{i}?", "Correct", 2, i + 1)
+    ui = StubUI()
+    result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=6), ui)
+    assert result.total == 6
+    due_count = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE pool='due'"
+    ).fetchone()[0]
+    new_count = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE pool='new'"
+    ).fetchone()[0]
+    assert due_count + new_count == 6
+
+
 # ---------------------------------------------------------------------------
 # All pools empty → early exit
 # ---------------------------------------------------------------------------

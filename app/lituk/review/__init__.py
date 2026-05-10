@@ -32,10 +32,6 @@ def main(
     parser.add_argument("--db", default=str(_DEFAULT_DB), help="Path to SQLite DB")
     parser.add_argument("--size", type=int, default=24, help="Cards per session")
     parser.add_argument(
-        "--new-cap", type=int, default=5, dest="new_cap",
-        help="Max new cards per session",
-    )
-    parser.add_argument(
         "--topic",
         type=_parse_topics,
         default=None,
@@ -45,7 +41,7 @@ def main(
     parsed = parser.parse_args(args)
 
     conn = init_db(parsed.db)
-    config = SessionConfig(size=parsed.size, new_cap=parsed.new_cap)
+    config = SessionConfig(size=parsed.size)
     run_session(
         conn, date.today(), _rng or random.Random(), config, TerminalUI(),
         topics=parsed.topic,
