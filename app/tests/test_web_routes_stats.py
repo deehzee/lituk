@@ -8,7 +8,7 @@ from lituk.web import create_app
 import lituk.web.sessions as _sessions
 
 
-TODAY = date(2026, 5, 9)
+TODAY = date.today()
 
 
 @pytest.fixture
