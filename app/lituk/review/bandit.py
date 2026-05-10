@@ -14,7 +14,3 @@ def choose(rng: random.Random, due: PoolPosterior, new: PoolPosterior) -> str:
     return "due" if theta_due >= theta_new else "new"
 
 
-def update(post: PoolPosterior, correct: bool) -> PoolPosterior:
-    if correct:
-        return PoolPosterior(alpha=post.alpha + 1, beta=post.beta)
-    return PoolPosterior(alpha=post.alpha, beta=post.beta + 1)

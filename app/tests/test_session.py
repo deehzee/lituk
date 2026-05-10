@@ -9,6 +9,7 @@ from lituk.review.presenter import Prompt
 from lituk.review.session import (
     SessionConfig,
     SessionResult,
+    _compute_posteriors,
     run_drill_session,
     run_explore_session,
     run_session,
@@ -126,14 +127,11 @@ def test_one_card_session_writes_review_row(conn):
     assert count == 1
 
 
-def test_one_card_session_updates_pool_state(conn):
+def test_one_card_session_writes_review(conn):
     _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     run_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
-    new_row = conn.execute(
-        "SELECT alpha, beta FROM pool_state WHERE pool='new'"
-    ).fetchone()
-    # one correct answer on the new arm → alpha should have increased
-    assert new_row["alpha"] > 1.0
+    count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+    assert count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -192,80 +190,60 @@ def test_lapsed_card_counted_toward_session_size(conn):
 # ---------------------------------------------------------------------------
 
 def test_empty_new_pool_falls_back_to_due(conn):
-    # Insert 3 due cards, no new cards
     for i in range(3):
         fid = _insert_fact_and_question(conn, f"Q{i}?", "Correct", 1, i + 1)
         _seed_due_card(conn, fid)
     ui = StubUI()
-    result = run_session(
-        conn, TODAY, random.Random(0), SessionConfig(size=3, new_cap=5), ui
-    )
+    result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert result.total == 3
 
 
 def test_empty_due_pool_falls_back_to_new(conn):
-    # Insert 3 new cards, no due cards
     for i in range(3):
         _insert_fact_and_question(conn, f"Q{i}?", "Correct", 1, i + 1)
     ui = StubUI()
-    result = run_session(
-        conn, TODAY, random.Random(0), SessionConfig(size=3, new_cap=5), ui
-    )
+    result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert result.total == 3
 
 
 def test_fresh_db_all_new_fills_session(conn):
-    # All-new pool with more cards than new_cap — session must still reach size=24
     for i in range(30):
         _insert_fact_and_question(conn, f"Q{i}?", "Correct", 1, i + 1)
     ui = StubUI()
-    result = run_session(
-        conn, TODAY, random.Random(0), SessionConfig(size=24, new_cap=5), ui
-    )
+    result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=24), ui)
     assert result.total == 24
 
 
-def test_new_cap_lifted_when_due_exhausted(conn):
-    # 5 due cards, 20 new cards, new_cap=2, size=15
-    # After due exhausts, new_cap should lift so session reaches 15
-    for i in range(5):
-        fid = _insert_fact_and_question(conn, f"Qd{i}?", "Correct", 1, i + 1)
-        _seed_due_card(conn, fid)
-    for i in range(20):
-        _insert_fact_and_question(conn, f"Qn{i}?", "Correct", 2, i + 1)
-    ui = StubUI()
-    result = run_session(
-        conn, TODAY, random.Random(0), SessionConfig(size=15, new_cap=2), ui
-    )
-    assert result.total == 15
-
-
-# ---------------------------------------------------------------------------
-# new_cap
-# ---------------------------------------------------------------------------
-
-def test_new_cap_limits_new_cards(conn):
-    # 10 new facts, new_cap=3
-    for i in range(10):
+def test_no_new_cap_all_new_can_fill_session(conn):
+    # Without new_cap, a session with only new cards fills up to size
+    for i in range(30):
         _insert_fact_and_question(conn, f"Q{i}?", "Correct", 1, i + 1)
-    # Also add some due cards so session can fill remaining slots
-    for i in range(10, 20):
-        fid = _insert_fact_and_question(conn, f"Q{i}?", "Correct", 2, i - 9)
-        _seed_due_card(conn, fid)
-
-    shown_pools: list[str] = []
-
-    class TrackingUI(StubUI):
-        pass
-
     ui = StubUI()
-    result = run_session(
-        conn, TODAY, random.Random(0), SessionConfig(size=6, new_cap=3), ui
-    )
+    result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=10), ui)
     new_count = conn.execute(
         "SELECT COUNT(*) FROM reviews WHERE pool='new'"
     ).fetchone()[0]
-    assert new_count <= 3
+    assert result.total == 10
+    assert new_count == 10
+
+
+def test_bandit_choose_called_with_both_pools_non_empty(conn):
+    # Mix of due and new cards forces the bandit to call choose()
+    for i in range(5):
+        fid = _insert_fact_and_question(conn, f"Qd{i}?", "Correct", 1, i + 1)
+        _seed_due_card(conn, fid)
+    for i in range(5):
+        _insert_fact_and_question(conn, f"Qn{i}?", "Correct", 2, i + 1)
+    ui = StubUI()
+    result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=6), ui)
+    assert result.total == 6
+    due_count = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE pool='due'"
+    ).fetchone()[0]
+    new_count = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE pool='new'"
+    ).fetchone()[0]
+    assert due_count + new_count == 6
 
 
 # ---------------------------------------------------------------------------
@@ -513,21 +491,12 @@ def test_drill_session_updates_sm2(conn):
     assert row["repetitions"] > 0
 
 
-def test_drill_session_does_not_update_pool_state(conn):
+def test_drill_session_writes_review_with_drill_pool(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=1)
-
-    before = conn.execute(
-        "SELECT alpha, beta FROM pool_state"
-    ).fetchall()
     run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
-    after = conn.execute(
-        "SELECT alpha, beta FROM pool_state"
-    ).fetchall()
-
-    assert [(r["alpha"], r["beta"]) for r in before] == [
-        (r["alpha"], r["beta"]) for r in after
-    ]
+    row = conn.execute("SELECT pool FROM reviews").fetchone()
+    assert row["pool"] == "drill"
 
 
 def test_drill_session_id_written(conn):
@@ -680,3 +649,90 @@ def test_explore_session_session_id_written(conn):
     )
     row = conn.execute("SELECT session_id FROM reviews").fetchone()
     assert row["session_id"] == "explore-uuid"
+
+
+# ---------------------------------------------------------------------------
+# _compute_posteriors
+# ---------------------------------------------------------------------------
+
+def _insert_review(conn, fid, qid, correct, pool, reviewed_at):
+    conn.execute(
+        "INSERT INTO reviews"
+        " (fact_id, question_id, reviewed_at, grade, correct, pool,"
+        "  ease_after, interval_after)"
+        " VALUES (?, ?, ?, 4, ?, ?, 2.5, 1)",
+        (fid, qid, reviewed_at, int(correct), pool),
+    )
+    conn.commit()
+
+
+def test_compute_posteriors_all_unexplored(conn):
+    _insert_fact_and_question(conn, "Q1?", "A", 1, 1)
+    new_post, due_post = _compute_posteriors(conn, TODAY)
+    # 1 unexplored, 0 explored → Beta(2, 1)
+    assert new_post.alpha == 2
+    assert new_post.beta == 1
+    # no reviews → Beta(1, 1)
+    assert due_post.alpha == 1
+    assert due_post.beta == 1
+
+
+def test_compute_posteriors_after_exploring(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    _seed_due_card(conn, fid)  # now explored
+    new_post, due_post = _compute_posteriors(conn, TODAY)
+    # 0 unexplored, 1 explored → Beta(1, 2)
+    assert new_post.alpha == 1
+    assert new_post.beta == 2
+
+
+def test_compute_posteriors_due_arm_counts_failures(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    qid = conn.execute(
+        "SELECT id FROM questions WHERE fact_id=?", (fid,)
+    ).fetchone()["id"]
+    _seed_due_card(conn, fid)
+    ts = TODAY.isoformat() + "T10:00:00"
+    _insert_review(conn, fid, qid, correct=False, pool="due", reviewed_at=ts)
+    _insert_review(conn, fid, qid, correct=True, pool="due", reviewed_at=ts)
+    _, due_post = _compute_posteriors(conn, TODAY)
+    # due arm: Beta(n_wrong+1, n_correct+1) = Beta(1+1, 1+1) = Beta(2, 2)
+    assert due_post.alpha == 2
+    assert due_post.beta == 2
+
+
+def test_compute_posteriors_excludes_old_reviews(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    qid = conn.execute(
+        "SELECT id FROM questions WHERE fact_id=?", (fid,)
+    ).fetchone()["id"]
+    _seed_due_card(conn, fid)
+    old_ts = (TODAY - timedelta(days=31)).isoformat() + "T10:00:00"
+    _insert_review(conn, fid, qid, correct=False, pool="due", reviewed_at=old_ts)
+    _, due_post = _compute_posteriors(conn, TODAY)
+    # old review excluded → Beta(1, 1)
+    assert due_post.alpha == 1
+    assert due_post.beta == 1
+
+
+def test_compute_posteriors_excludes_new_pool_reviews(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    qid = conn.execute(
+        "SELECT id FROM questions WHERE fact_id=?", (fid,)
+    ).fetchone()["id"]
+    ts = TODAY.isoformat() + "T10:00:00"
+    _insert_review(conn, fid, qid, correct=False, pool="new", reviewed_at=ts)
+    _, due_post = _compute_posteriors(conn, TODAY)
+    # new-pool review excluded → Beta(1, 1)
+    assert due_post.alpha == 1
+    assert due_post.beta == 1
+
+
+def test_compute_posteriors_topic_filter(conn):
+    fid1 = _insert_fact_and_question(conn, "Q_ch1?", "A", 1, 1, topic=1)
+    _insert_fact_and_question(conn, "Q_ch2?", "B", 1, 2, topic=2)
+    _seed_due_card(conn, fid1)  # ch1 explored, ch2 not
+    new_post, _ = _compute_posteriors(conn, TODAY, topics=[2])
+    # ch2: 1 unexplored, 0 explored → Beta(2, 1)
+    assert new_post.alpha == 2
+    assert new_post.beta == 1

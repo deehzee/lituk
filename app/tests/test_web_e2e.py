@@ -78,19 +78,21 @@ def test_e2e_regular_session_card_state_grows(e2e_client):
     assert seen > 0
 
 
-def test_e2e_regular_session_pool_state_moves(e2e_client):
+def test_e2e_regular_session_updates_card_state_and_reviews(e2e_client):
     client, db_path = e2e_client
     resp = client.post("/api/sessions",
                        json={"mode": "regular", "chapters": []})
     sid = resp.get_json()["session_id"]
-    _drive_to_summary(client, sid)
+    summary = _drive_to_summary(client, sid)
 
     conn = init_db(db_path)
-    rows = {r["pool"]: r for r in
-            conn.execute("SELECT pool, alpha, beta FROM pool_state").fetchall()}
+    n_card_state = conn.execute("SELECT COUNT(*) FROM card_state").fetchone()[0]
+    n_reviews = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE session_id=?", (sid,)
+    ).fetchone()[0]
     conn.close()
-    # At least one bandit arm should have moved off the Beta(1,1) prior
-    assert rows["new"]["alpha"] > 1.0 or rows["new"]["beta"] > 1.0
+    assert n_card_state > 0
+    assert n_reviews == summary["payload"]["total"]
 
 
 def test_e2e_prompt_payload_never_contains_correct_indices(e2e_client):
