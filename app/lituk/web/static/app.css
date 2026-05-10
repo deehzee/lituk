@@ -4,10 +4,25 @@
 
 /* Choice buttons */
 .choices { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem; }
-.choice-btn { text-align: left; }
-.choice-btn.selected { outline: 3px solid var(--pico-primary); }
-.choice-btn.correct  { background: var(--pico-ins-color); color: #fff; }
-.choice-btn.wrong    { background: var(--pico-del-color); color: #fff; }
+/* Unselected: ghost/outline look */
+.choice-btn {
+  text-align: left;
+  background-color: transparent;
+  border-color: var(--pico-primary);
+  color: var(--pico-primary);
+}
+/* Selected: solid fill — clearly chosen (wins over base via cascade order + specificity) */
+.choice-btn.selected {
+  background-color: var(--pico-primary-background);
+  border-color: var(--pico-primary-border);
+  color: var(--pico-primary-inverse);
+  outline: 3px solid var(--pico-primary);
+  outline-offset: 2px;
+  font-weight: 600;
+}
+/* Feedback states: win over both base and selected */
+.choice-btn.correct { background-color: var(--pico-ins-color); border-color: var(--pico-ins-color); color: #fff; }
+.choice-btn.wrong   { background-color: var(--pico-del-color); border-color: var(--pico-del-color); color: #fff; }
 
 /* Grade buttons */
 .grade-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
@@ -36,6 +51,15 @@
          border-radius: 8px; text-align: center; }
 .tile h3 { margin: 0 0 0.25rem; font-size: 0.9rem; color: var(--pico-muted-color); }
 .tile .big { font-size: 2rem; font-weight: bold; margin: 0; }
+
+/* Coverage hint (explore mode) */
+.coverage-hint {
+  display: block;
+  padding-left: 2.25rem;
+  margin-top: -0.25rem;
+  margin-bottom: 0.5rem;
+  color: var(--pico-muted-color);
+}
 
 /* Misc */
 .hidden { display: none !important; }
