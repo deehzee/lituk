@@ -42,6 +42,22 @@ def get_dashboard():
         conn.close()
 
 
+@bp.get("/api/coverage")
+def get_coverage():
+    chapters_raw = request.args.get("chapters")
+    chapters: list[int] | None = None
+    if chapters_raw:
+        try:
+            chapters = [int(c) for c in chapters_raw.split(",") if c.strip()]
+        except ValueError:
+            return jsonify(error="chapters must be comma-separated integers"), 400
+    conn = _get_conn()
+    try:
+        return jsonify(queries.coverage(conn, chapters=chapters))
+    finally:
+        conn.close()
+
+
 @bp.get("/api/missed")
 def get_missed():
     chapters_raw = request.args.get("chapters")

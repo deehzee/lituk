@@ -77,10 +77,26 @@ def weak_facts(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
     ]
 
 
-def coverage(conn: sqlite3.Connection) -> dict:
-    """Fraction of all facts that have a card_state row."""
-    total = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
-    seen = conn.execute("SELECT COUNT(*) FROM card_state").fetchone()[0]
+def coverage(
+    conn: sqlite3.Connection,
+    chapters: list[int] | None = None,
+) -> dict:
+    """Fraction of facts that have a card_state row, optionally filtered by chapter."""
+    if chapters:
+        placeholders = ",".join("?" * len(chapters))
+        total = conn.execute(
+            f"SELECT COUNT(*) FROM facts WHERE topic IN ({placeholders})",
+            chapters,
+        ).fetchone()[0]
+        seen = conn.execute(
+            "SELECT COUNT(*) FROM card_state cs"
+            " JOIN facts f ON f.id = cs.fact_id"
+            f" WHERE f.topic IN ({placeholders})",
+            chapters,
+        ).fetchone()[0]
+    else:
+        total = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+        seen = conn.execute("SELECT COUNT(*) FROM card_state").fetchone()[0]
     pct = (seen / total * 100.0) if total > 0 else 0.0
     return {"seen": seen, "total": total, "pct_seen": round(pct, 1)}
 

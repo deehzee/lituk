@@ -11,6 +11,7 @@ from lituk.review.session import (
     SessionConfig,
     SessionResult,
     run_drill_session,
+    run_explore_session,
     run_session,
 )
 
@@ -111,6 +112,11 @@ def start_session(
         try:
             if mode == "drill":
                 run_drill_session(
+                    conn, today, rng, config,
+                    web_ui, topics=chapters or None, session_id=sid,
+                )
+            elif mode == "explore":
+                run_explore_session(
                     conn, today, rng, config,
                     web_ui, topics=chapters or None, session_id=sid,
                 )
