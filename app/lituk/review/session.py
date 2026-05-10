@@ -14,7 +14,6 @@ from lituk.review.scheduler import update as sm2_update
 @dataclass(frozen=True)
 class SessionConfig:
     size: int = 24
-    new_cap: int = 5
 
 
 @dataclass(frozen=True)
@@ -238,10 +237,24 @@ def run_session(
     due: list[int] = _due_pool(conn, today, topics)
     new: list[int] = _new_pool(conn, topics)
     rng.shuffle(new)
-    due_post, new_post = _load_posteriors(conn)
+    new_post, due_post = _compute_posteriors(conn, today, topics)
+
+    # In-memory counters for mid-session posterior updates
+    n_unexplored = len(new)
+    n_explored = conn.execute("SELECT COUNT(*) FROM card_state").fetchone()[0]
+    cutoff = (today - timedelta(days=30)).isoformat()
+    row = conn.execute(
+        "SELECT"
+        " SUM(CASE WHEN correct=0 THEN 1 ELSE 0 END) AS wrong,"
+        " SUM(CASE WHEN correct=1 THEN 1 ELSE 0 END) AS correct"
+        " FROM reviews WHERE pool IN ('due','lapsed','drill')"
+        " AND date(reviewed_at) >= ?",
+        (cutoff,),
+    ).fetchone()
+    n_wrong = row["wrong"] or 0
+    n_correct = row["correct"] or 0
 
     lapsed: deque[int] = deque()
-    new_drawn = 0
     correct_count = 0
     total = 0
     weak: set[int] = set()
@@ -252,12 +265,12 @@ def run_session(
             pool_label = "lapsed"
         else:
             due_ok = bool(due)
-            new_ok = bool(new) and (not due_ok or new_drawn < config.new_cap)
+            new_ok = bool(new)
             if not due_ok and not new_ok:
                 break
 
             if due_ok and new_ok:
-                arm = choose(rng, due_post, new_post)
+                arm = choose(rng, new_post, due_post)
             elif due_ok:
                 arm = "due"
             else:
@@ -269,18 +282,22 @@ def run_session(
             else:
                 fact_id = new.pop(0)
                 pool_label = "new"
-                new_drawn += 1
+                n_unexplored -= 1
+                n_explored += 1
+                new_post = PoolPosterior(
+                    alpha=n_unexplored + 1, beta=n_explored + 1
+                )
 
         correct, _ = _present_and_grade(
             conn, today, ui, fact_id, pool_label, rng, session_id
         )
 
-        if pool_label != "lapsed":
-            if pool_label == "due":
-                due_post = bandit_update(due_post, correct)
+        if pool_label in ("due", "lapsed"):
+            if correct:
+                n_correct += 1
             else:
-                new_post = bandit_update(new_post, correct)
-            _save_posteriors(conn, due_post, new_post)
+                n_wrong += 1
+            due_post = PoolPosterior(alpha=n_wrong + 1, beta=n_correct + 1)
 
         if correct:
             correct_count += 1
