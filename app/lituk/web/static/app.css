@@ -24,6 +24,10 @@
 .choice-btn.correct { background-color: var(--pico-ins-color); border-color: var(--pico-ins-color); color: #fff; }
 .choice-btn.wrong   { background-color: var(--pico-del-color); border-color: var(--pico-del-color); color: #fff; }
 
+/* Submit button (multi-choice confirm) */
+.submit-btn { background: #27ae60; color: #fff; border-color: #27ae60; }
+.submit-btn:hover { background: #219a52; border-color: #219a52; }
+
 /* Grade buttons */
 .grade-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
 .grade-btn[data-grade="3"] { background: #e67e22; color: #fff; border: none; }
