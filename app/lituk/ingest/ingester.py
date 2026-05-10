@@ -13,6 +13,14 @@ def ingest_pdf(
     rows = parse_pdf(pdf_path, test_num)
     inserted = 0
     for row in rows:
+        # Repair stale facts that previously had an empty correct_answer_text
+        # due to the no-space answer-line parsing bug.
+        if row['correct_answer_text']:
+            conn.execute(
+                "UPDATE facts SET correct_answer_text = ?"
+                " WHERE question_text = ? AND correct_answer_text = ''",
+                (row['correct_answer_text'], row['question_text']),
+            )
         fact_id = get_or_create_fact(
             conn,
             row['question_text'],
@@ -20,11 +28,19 @@ def ingest_pdf(
         )
         conn.execute(
             """
-            INSERT OR IGNORE INTO questions
+            INSERT INTO questions
                 (source_test, q_number, question_text, choices,
                  correct_letters, explanation, is_true_false, is_multi,
                  fact_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_test, q_number) DO UPDATE SET
+                question_text   = excluded.question_text,
+                choices         = excluded.choices,
+                correct_letters = excluded.correct_letters,
+                explanation     = excluded.explanation,
+                is_true_false   = excluded.is_true_false,
+                is_multi        = excluded.is_multi,
+                fact_id         = excluded.fact_id
             """,
             (
                 row['source_test'],

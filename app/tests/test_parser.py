@@ -142,6 +142,16 @@ D - Leaders of other main political parties
 Since 1958, the Prime Minister has had the power to nominate peers.
 """
 
+_SAMPLE_A_BLOCK_NO_SPACE = """
+1.
+A - The 40 days before Easter
+The 40 days before Easter are known as Lent.
+
+21.
+B-5
+There are five ski centres in Scotland.
+"""
+
 
 def test_parse_answers_block_count():
     answers = parse_answers_block(_SAMPLE_A_BLOCK)
@@ -164,6 +174,14 @@ def test_parse_answers_block_explanation_excludes_answer_lines():
     answers = parse_answers_block(_SAMPLE_A_BLOCK)
     assert "A - The Prime Minister" not in answers[2]["explanation"]
     assert "Since 1958" in answers[2]["explanation"]
+
+
+def test_parse_answers_block_no_space_dash():
+    answers = parse_answers_block(_SAMPLE_A_BLOCK_NO_SPACE)
+    assert len(answers) == 2
+    assert answers[1]["q_number"] == 21
+    assert answers[1]["correct_letters"] == ["B"]
+    assert "five ski centres" in answers[1]["explanation"]
 
 
 def test_parse_pdf_question_count():
