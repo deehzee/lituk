@@ -320,7 +320,7 @@ function initMissed() {
           tr.innerHTML =
             `<td>${escHtml(r.question_text)}</td>
              <td>${escHtml(correctText)}</td>
-             <td>${escHtml(r.chapter_name || "—")}</td>
+             <td>${r.topic_id != null ? r.topic_id : "—"}</td>
              <td>${dt}</td>
              <td>${r.miss_count}</td>`;
           tbody.appendChild(tr);
