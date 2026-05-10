@@ -5,7 +5,7 @@ from lituk.web import sessions as _sessions
 bp = Blueprint("review", __name__)
 
 _VALID_GRADES = {0, 3, 4, 5}
-_VALID_MODES = {"regular", "drill"}
+_VALID_MODES = {"regular", "drill", "explore"}
 
 
 @bp.post("/api/sessions")

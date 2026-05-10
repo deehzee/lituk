@@ -38,6 +38,17 @@ def test_post_sessions_returns_session_id(client):
     assert isinstance(data["session_id"], str)
 
 
+def test_post_sessions_explore_mode_returns_session_id(client):
+    resp = client.post(
+        "/api/sessions",
+        json={"mode": "explore", "chapters": []},
+    )
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "session_id" in data
+    assert isinstance(data["session_id"], str)
+
+
 def test_post_sessions_invalid_mode_returns_400(client):
     resp = client.post(
         "/api/sessions",
@@ -235,3 +246,4 @@ def test_full_regular_session_one_card(tmp_path):
 
     summary = _drive_session_to_summary(client, sid)
     assert summary["payload"]["total"] >= 1
+
