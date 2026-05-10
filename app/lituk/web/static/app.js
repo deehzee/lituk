@@ -13,18 +13,27 @@ else if (page === "missed")    initMissed();
    ========================================================================= */
 function initHome() {
   const pill = document.getElementById("due-pill");
-  fetch("/api/dashboard")
-    .then(r => r.json())
-    .then(d => {
-      if (d.due_today > 0) {
+
+  function refreshDashboard() {
+    fetch("/api/dashboard")
+      .then(r => r.json())
+      .then(d => {
         pill.textContent = d.due_today + " due";
-        pill.classList.remove("hidden");
-      }
-      const cov = d.coverage;
-      document.getElementById("coverage-hint").textContent =
-        (cov.total - cov.seen) + " of " + cov.total + " unseen";
-    })
-    .catch(() => {});
+        pill.classList.toggle("hidden", d.due_today === 0);
+        const cov = d.coverage;
+        document.getElementById("coverage-hint").textContent =
+          (cov.total - cov.seen) + " of " + cov.total + " unseen";
+      })
+      .catch(() => {});
+  }
+
+  refreshDashboard();
+
+  // Re-fetch when returning from bfcache (browser back button) or switching tabs
+  window.addEventListener("pageshow", e => { if (e.persisted) refreshDashboard(); });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) refreshDashboard();
+  });
 
   function updateCoverageHint() {
     const boxes = Array.from(
