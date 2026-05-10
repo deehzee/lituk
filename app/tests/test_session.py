@@ -9,6 +9,7 @@ from lituk.review.presenter import Prompt
 from lituk.review.session import (
     SessionConfig,
     SessionResult,
+    _compute_posteriors,
     run_drill_session,
     run_explore_session,
     run_session,
@@ -680,3 +681,90 @@ def test_explore_session_session_id_written(conn):
     )
     row = conn.execute("SELECT session_id FROM reviews").fetchone()
     assert row["session_id"] == "explore-uuid"
+
+
+# ---------------------------------------------------------------------------
+# _compute_posteriors
+# ---------------------------------------------------------------------------
+
+def _insert_review(conn, fid, qid, correct, pool, reviewed_at):
+    conn.execute(
+        "INSERT INTO reviews"
+        " (fact_id, question_id, reviewed_at, grade, correct, pool,"
+        "  ease_after, interval_after)"
+        " VALUES (?, ?, ?, 4, ?, ?, 2.5, 1)",
+        (fid, qid, reviewed_at, int(correct), pool),
+    )
+    conn.commit()
+
+
+def test_compute_posteriors_all_unexplored(conn):
+    _insert_fact_and_question(conn, "Q1?", "A", 1, 1)
+    new_post, due_post = _compute_posteriors(conn, TODAY)
+    # 1 unexplored, 0 explored → Beta(2, 1)
+    assert new_post.alpha == 2
+    assert new_post.beta == 1
+    # no reviews → Beta(1, 1)
+    assert due_post.alpha == 1
+    assert due_post.beta == 1
+
+
+def test_compute_posteriors_after_exploring(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    _seed_due_card(conn, fid)  # now explored
+    new_post, due_post = _compute_posteriors(conn, TODAY)
+    # 0 unexplored, 1 explored → Beta(1, 2)
+    assert new_post.alpha == 1
+    assert new_post.beta == 2
+
+
+def test_compute_posteriors_due_arm_counts_failures(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    qid = conn.execute(
+        "SELECT id FROM questions WHERE fact_id=?", (fid,)
+    ).fetchone()["id"]
+    _seed_due_card(conn, fid)
+    ts = TODAY.isoformat() + "T10:00:00"
+    _insert_review(conn, fid, qid, correct=False, pool="due", reviewed_at=ts)
+    _insert_review(conn, fid, qid, correct=True, pool="due", reviewed_at=ts)
+    _, due_post = _compute_posteriors(conn, TODAY)
+    # due arm: Beta(n_wrong+1, n_correct+1) = Beta(1+1, 1+1) = Beta(2, 2)
+    assert due_post.alpha == 2
+    assert due_post.beta == 2
+
+
+def test_compute_posteriors_excludes_old_reviews(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    qid = conn.execute(
+        "SELECT id FROM questions WHERE fact_id=?", (fid,)
+    ).fetchone()["id"]
+    _seed_due_card(conn, fid)
+    old_ts = (TODAY - timedelta(days=31)).isoformat() + "T10:00:00"
+    _insert_review(conn, fid, qid, correct=False, pool="due", reviewed_at=old_ts)
+    _, due_post = _compute_posteriors(conn, TODAY)
+    # old review excluded → Beta(1, 1)
+    assert due_post.alpha == 1
+    assert due_post.beta == 1
+
+
+def test_compute_posteriors_excludes_new_pool_reviews(conn):
+    fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
+    qid = conn.execute(
+        "SELECT id FROM questions WHERE fact_id=?", (fid,)
+    ).fetchone()["id"]
+    ts = TODAY.isoformat() + "T10:00:00"
+    _insert_review(conn, fid, qid, correct=False, pool="new", reviewed_at=ts)
+    _, due_post = _compute_posteriors(conn, TODAY)
+    # new-pool review excluded → Beta(1, 1)
+    assert due_post.alpha == 1
+    assert due_post.beta == 1
+
+
+def test_compute_posteriors_topic_filter(conn):
+    fid1 = _insert_fact_and_question(conn, "Q_ch1?", "A", 1, 1, topic=1)
+    _insert_fact_and_question(conn, "Q_ch2?", "B", 1, 2, topic=2)
+    _seed_due_card(conn, fid1)  # ch1 explored, ch2 not
+    new_post, _ = _compute_posteriors(conn, TODAY, topics=[2])
+    # ch2: 1 unexplored, 0 explored → Beta(2, 1)
+    assert new_post.alpha == 2
+    assert new_post.beta == 1

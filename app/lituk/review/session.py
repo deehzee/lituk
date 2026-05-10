@@ -2,11 +2,10 @@ import random
 import sqlite3
 from collections import deque
 from dataclasses import dataclass
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
 from lituk.review.bandit import PoolPosterior, choose
-from lituk.review.bandit import update as bandit_update
 from lituk.review.presenter import Prompt, build_prompt, grade_answer
 from lituk.review.scheduler import CardState, initial_state
 from lituk.review.scheduler import update as sm2_update
@@ -78,33 +77,53 @@ def _drill_pool(
     return [r["fact_id"] for r in conn.execute(sql, params).fetchall()]
 
 
-def _load_posteriors(
+def _compute_posteriors(
     conn: sqlite3.Connection,
+    today: date,
+    topics: list[int] | None = None,
 ) -> tuple[PoolPosterior, PoolPosterior]:
-    rows = {
-        r["pool"]: r
-        for r in conn.execute(
-            "SELECT pool, alpha, beta FROM pool_state"
-        ).fetchall()
-    }
+    """Compute bandit posteriors fresh from DB state.
+
+    new arm:  Beta(n_unexplored + 1, n_explored + 1)  — coverage signal
+    due arm:  Beta(n_wrong + 1, n_correct + 1)        — failure-rate signal
+    """
+    topic_fact_sql = (
+        f" WHERE topic IN ({','.join('?' * len(topics))})" if topics else ""
+    )
+    topic_params: list = list(topics) if topics else []
+
+    n_total = conn.execute(
+        f"SELECT COUNT(*) FROM facts{topic_fact_sql}", topic_params
+    ).fetchone()[0]
+    topic_cs_sql = (
+        " JOIN facts f ON f.id = cs.fact_id"
+        f" WHERE f.topic IN ({','.join('?' * len(topics))})" if topics else ""
+    )
+    n_explored = conn.execute(
+        f"SELECT COUNT(*) FROM card_state cs{topic_cs_sql}", topic_params
+    ).fetchone()[0]
+    n_unexplored = n_total - n_explored
+
+    cutoff = (today - timedelta(days=30)).isoformat()
+    topic_rev_sql = (
+        f" AND f.topic IN ({','.join('?' * len(topics))})" if topics else ""
+    )
+    row = conn.execute(
+        "SELECT"
+        " SUM(CASE WHEN r.correct=0 THEN 1 ELSE 0 END) AS wrong,"
+        " SUM(CASE WHEN r.correct=1 THEN 1 ELSE 0 END) AS correct"
+        " FROM reviews r JOIN facts f ON f.id = r.fact_id"
+        " WHERE r.pool IN ('due','lapsed','drill')"
+        f"  AND date(r.reviewed_at) >= ?{topic_rev_sql}",
+        [cutoff] + topic_params,
+    ).fetchone()
+    n_wrong = row["wrong"] or 0
+    n_correct = row["correct"] or 0
+
     return (
-        PoolPosterior(alpha=rows["due"]["alpha"], beta=rows["due"]["beta"]),
-        PoolPosterior(alpha=rows["new"]["alpha"], beta=rows["new"]["beta"]),
+        PoolPosterior(alpha=n_unexplored + 1, beta=n_explored + 1),
+        PoolPosterior(alpha=n_wrong + 1, beta=n_correct + 1),
     )
-
-
-def _save_posteriors(
-    conn: sqlite3.Connection, due: PoolPosterior, new: PoolPosterior
-) -> None:
-    conn.execute(
-        "UPDATE pool_state SET alpha=?, beta=? WHERE pool='due'",
-        (due.alpha, due.beta),
-    )
-    conn.execute(
-        "UPDATE pool_state SET alpha=?, beta=? WHERE pool='new'",
-        (new.alpha, new.beta),
-    )
-    conn.commit()
 
 
 def _load_card_state(
