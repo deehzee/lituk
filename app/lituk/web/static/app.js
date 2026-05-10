@@ -20,8 +20,27 @@ function initHome() {
         pill.textContent = d.due_today + " due";
         pill.classList.remove("hidden");
       }
+      const cov = d.coverage;
+      document.getElementById("coverage-hint").textContent =
+        "— " + cov.seen + " / " + cov.total + " explored (" + cov.pct_seen + "%)";
     })
     .catch(() => {});
+
+  function updateCoverageHint() {
+    const boxes = Array.from(
+      document.querySelectorAll("input[name=chapters]:checked")
+    ).map(b => b.value);
+    const url = boxes.length
+      ? "/api/coverage?chapters=" + boxes.join(",")
+      : "/api/coverage";
+    fetch(url)
+      .then(r => r.json())
+      .then(d => {
+        document.getElementById("coverage-hint").textContent =
+          "— " + d.seen + " / " + d.total + " explored (" + d.pct_seen + "%)";
+      })
+      .catch(() => {});
+  }
 
   fetch("/api/topics")
     .then(r => r.json())
@@ -34,6 +53,7 @@ function initHome() {
           `<input type="checkbox" name="chapters" value="${t.id}"> ${t.name}`;
         container.appendChild(label);
       });
+      container.addEventListener("change", updateCoverageHint);
     })
     .catch(() => {});
 

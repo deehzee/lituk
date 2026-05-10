@@ -185,3 +185,78 @@ def test_e2e_two_concurrent_sessions_independent(e2e_client):
     s2 = client.get(f"/api/sessions/{sid2}/state").get_json()
     assert s1["kind"] in ("starting", "prompt")
     assert s2["kind"] in ("starting", "prompt")
+
+
+# ---------------------------------------------------------------------------
+# Explore session end-to-end
+# ---------------------------------------------------------------------------
+
+def test_e2e_explore_session_writes_card_state_for_new_facts(e2e_client):
+    client, db_path = e2e_client
+
+    conn = init_db(db_path)
+    n_facts = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+    n_explored_before = conn.execute(
+        "SELECT COUNT(*) FROM card_state"
+    ).fetchone()[0]
+    conn.close()
+    assert n_explored_before == 0
+
+    resp = client.post("/api/sessions",
+                       json={"mode": "explore", "chapters": []})
+    assert resp.status_code == 200
+    sid = resp.get_json()["session_id"]
+    summary = _drive_to_summary(client, sid)
+    assert summary["payload"]["total"] >= 1
+
+    conn = init_db(db_path)
+    n_explored_after = conn.execute(
+        "SELECT COUNT(*) FROM card_state"
+    ).fetchone()[0]
+    new_reviews = conn.execute(
+        "SELECT COUNT(*) FROM reviews WHERE pool='new' AND session_id=?",
+        (sid,),
+    ).fetchone()[0]
+    conn.close()
+
+    assert n_explored_after > n_explored_before
+    assert n_explored_after <= n_facts
+    assert new_reviews >= 1
+
+
+def test_e2e_explore_session_only_shows_unseen_facts(e2e_client):
+    client, db_path = e2e_client
+
+    # Run a regular session first to mark some facts as seen
+    resp = client.post("/api/sessions",
+                       json={"mode": "regular", "chapters": []})
+    sid1 = resp.get_json()["session_id"]
+    _drive_to_summary(client, sid1)
+
+    conn = init_db(db_path)
+    seen_after_regular = conn.execute(
+        "SELECT COUNT(*) FROM card_state"
+    ).fetchone()[0]
+    conn.close()
+
+    # Explore session should only touch previously unseen facts
+    resp = client.post("/api/sessions",
+                       json={"mode": "explore", "chapters": []})
+    sid2 = resp.get_json()["session_id"]
+    _drive_to_summary(client, sid2)
+
+    conn = init_db(db_path)
+    explore_reviews = conn.execute(
+        "SELECT DISTINCT r.fact_id FROM reviews r"
+        " JOIN card_state cs ON cs.fact_id = r.fact_id"
+        " WHERE r.session_id=? AND r.pool='new'",
+        (sid2,),
+    ).fetchall()
+    # All facts shown in explore session must have been unseen before it started
+    explore_fact_ids = {r["fact_id"] for r in explore_reviews}
+    originally_seen = conn.execute(
+        "SELECT fact_id FROM reviews WHERE session_id=?", (sid1,)
+    ).fetchall()
+    originally_seen_ids = {r["fact_id"] for r in originally_seen}
+    conn.close()
+    assert explore_fact_ids.isdisjoint(originally_seen_ids)
