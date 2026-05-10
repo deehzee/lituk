@@ -47,6 +47,49 @@ def test_ingest_pdf_idempotent(tmp_path):
     assert rows == 24
 
 
+def test_ingest_pdf_updates_correct_letters_on_reingest(tmp_path):
+    conn = init_db(str(tmp_path / "test.db"))
+    ingest_pdf(conn, str(PDF_TEST_1), test_num=1)
+    # Corrupt the first question's correct_letters to simulate the parsing bug.
+    conn.execute(
+        "UPDATE questions SET correct_letters = '[]' WHERE source_test=1 AND q_number=1"
+    )
+    conn.commit()
+    # Re-ingest should repair the corrupted row.
+    ingest_pdf(conn, str(PDF_TEST_1), test_num=1)
+    row = conn.execute(
+        "SELECT correct_letters FROM questions WHERE source_test=1 AND q_number=1"
+    ).fetchone()
+    assert json.loads(row["correct_letters"]) != []
+
+
+def test_ingest_pdf_repairs_empty_fact_correct_answer(tmp_path):
+    conn = init_db(str(tmp_path / "test.db"))
+    ingest_pdf(conn, str(PDF_TEST_1), test_num=1)
+    q_text = conn.execute(
+        "SELECT question_text FROM questions WHERE source_test=1 AND q_number=1"
+    ).fetchone()["question_text"]
+    original_fact_id = conn.execute(
+        "SELECT id FROM facts WHERE question_text=?", (q_text,)
+    ).fetchone()["id"]
+    # Corrupt the fact's correct_answer_text to simulate the parsing bug.
+    conn.execute(
+        "UPDATE facts SET correct_answer_text = '' WHERE id=?", (original_fact_id,)
+    )
+    conn.commit()
+    # Re-ingest should restore the correct answer text.
+    ingest_pdf(conn, str(PDF_TEST_1), test_num=1)
+    row = conn.execute(
+        "SELECT correct_answer_text FROM facts WHERE id=?", (original_fact_id,)
+    ).fetchone()
+    assert row["correct_answer_text"] != ""
+    # question must still point to the same fact (not a newly created duplicate)
+    fid = conn.execute(
+        "SELECT fact_id FROM questions WHERE source_test=1 AND q_number=1"
+    ).fetchone()["fact_id"]
+    assert fid == original_fact_id
+
+
 def test_ingest_pdf_choices_valid_json(tmp_path):
     conn = init_db(str(tmp_path / "test.db"))
     ingest_pdf(conn, str(PDF_TEST_1), test_num=1)
