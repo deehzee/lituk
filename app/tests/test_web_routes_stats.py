@@ -141,6 +141,41 @@ def test_dashboard_recent_sessions_groups_by_session_id(client, seeded):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/coverage
+# ---------------------------------------------------------------------------
+
+def test_coverage_endpoint_returns_global_stats(client, seeded):
+    resp = client.get("/api/coverage")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["seen"] == 5
+    assert data["total"] == 5
+    assert data["pct_seen"] == 100.0
+
+
+def test_coverage_endpoint_with_chapter_filter(client, seeded):
+    resp = client.get("/api/coverage?chapters=1")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["seen"] == 1
+    assert data["total"] == 1
+
+
+def test_coverage_endpoint_with_multi_chapter_filter(client, seeded):
+    resp = client.get("/api/coverage?chapters=1,2")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["seen"] == 2
+    assert data["total"] == 2
+
+
+def test_coverage_endpoint_bad_chapters_returns_400(client, seeded):
+    resp = client.get("/api/coverage?chapters=bad")
+    assert resp.status_code == 400
+    assert "chapters" in resp.get_json()["error"]
+
+
+# ---------------------------------------------------------------------------
 # GET /api/missed
 # ---------------------------------------------------------------------------
 
