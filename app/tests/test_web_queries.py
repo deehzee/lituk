@@ -216,6 +216,51 @@ def test_coverage_zero_when_no_facts_at_all(tmp_path):
     assert result["total"] == 0
 
 
+def test_coverage_chapter_filter_counts_only_that_chapter(tmp_path):
+    conn = init_db(str(tmp_path / "t.db"))
+    fid1 = _insert_fact(conn, "Q1?", "A", topic=1)
+    _insert_fact(conn, "Q2?", "B", topic=2)
+    _seed_card_state(conn, fid1)
+    result = coverage(conn, chapters=[1])
+    assert result["seen"] == 1
+    assert result["total"] == 1
+    assert result["pct_seen"] == 100.0
+
+
+def test_coverage_chapter_filter_excludes_other_chapters(tmp_path):
+    conn = init_db(str(tmp_path / "t.db"))
+    fid1 = _insert_fact(conn, "Q1?", "A", topic=1)
+    _insert_fact(conn, "Q2?", "B", topic=2)
+    _seed_card_state(conn, fid1)
+    result = coverage(conn, chapters=[2])
+    assert result["seen"] == 0
+    assert result["total"] == 1
+    assert result["pct_seen"] == 0.0
+
+
+def test_coverage_chapter_filter_multiple_chapters(tmp_path):
+    conn = init_db(str(tmp_path / "t.db"))
+    fid1 = _insert_fact(conn, "Q1?", "A", topic=1)
+    _insert_fact(conn, "Q2?", "B", topic=2)
+    _insert_fact(conn, "Q3?", "C", topic=3)
+    _seed_card_state(conn, fid1)
+    result = coverage(conn, chapters=[1, 2])
+    assert result["seen"] == 1
+    assert result["total"] == 2
+    assert result["pct_seen"] == 50.0
+
+
+def test_coverage_no_filter_matches_global(tmp_path):
+    conn = init_db(str(tmp_path / "t.db"))
+    fid1 = _insert_fact(conn, "Q1?", "A", topic=1)
+    _insert_fact(conn, "Q2?", "B", topic=2)
+    _seed_card_state(conn, fid1)
+    result = coverage(conn, chapters=None)
+    assert result["seen"] == 1
+    assert result["total"] == 2
+    assert result["pct_seen"] == 50.0
+
+
 # ---------------------------------------------------------------------------
 # streak
 # ---------------------------------------------------------------------------
