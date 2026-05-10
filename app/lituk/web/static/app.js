@@ -22,7 +22,7 @@ function initHome() {
       }
       const cov = d.coverage;
       document.getElementById("coverage-hint").textContent =
-        "— " + cov.seen + " / " + cov.total + " explored (" + cov.pct_seen + "%)";
+        (cov.total - cov.seen) + " of " + cov.total + " unseen";
     })
     .catch(() => {});
 
@@ -37,7 +37,7 @@ function initHome() {
       .then(r => r.json())
       .then(d => {
         document.getElementById("coverage-hint").textContent =
-          "— " + d.seen + " / " + d.total + " explored (" + d.pct_seen + "%)";
+          (d.total - d.seen) + " of " + d.total + " unseen";
       })
       .catch(() => {});
   }
