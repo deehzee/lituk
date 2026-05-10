@@ -41,12 +41,6 @@ CREATE TABLE IF NOT EXISTS card_state (
 );
 CREATE INDEX IF NOT EXISTS idx_card_state_due ON card_state(due_date);
 
-CREATE TABLE IF NOT EXISTS pool_state (
-    pool  TEXT PRIMARY KEY,
-    alpha REAL NOT NULL DEFAULT 1.0,
-    beta  REAL NOT NULL DEFAULT 1.0
-);
-
 CREATE TABLE IF NOT EXISTS reviews (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     fact_id        INTEGER NOT NULL REFERENCES facts(id),
@@ -70,18 +64,11 @@ INSERT OR IGNORE INTO chapters VALUES
     (5, 'The UK Government, the Law and Your Role');
 """
 
-_POOL_SEED = """
-INSERT OR IGNORE INTO pool_state (pool, alpha, beta) VALUES ('due', 1.0, 1.0);
-INSERT OR IGNORE INTO pool_state (pool, alpha, beta) VALUES ('new', 1.0, 1.0);
-"""
-
-
 def init_db(db_path: str) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
     conn.executescript(_CHAPTER_SEED)
-    conn.executescript(_POOL_SEED)
     cols = {row[1] for row in conn.execute("PRAGMA table_info(reviews)")}
     if "session_id" not in cols:
         conn.execute("ALTER TABLE reviews ADD COLUMN session_id TEXT")
