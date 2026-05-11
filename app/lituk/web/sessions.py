@@ -33,6 +33,9 @@ class WebUI:
         self._lock = threading.Lock()
         self.last_activity = time.monotonic()
 
+    def show_reasoning(self, text: str) -> None:
+        print(f"  → {text}", flush=True)
+
     def _set_state(self, kind: str, payload: dict) -> None:
         with self._lock:
             self.state = WebState(
