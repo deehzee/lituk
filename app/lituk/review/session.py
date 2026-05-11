@@ -169,7 +169,66 @@ def _select_card(
     if not due and not new:
         return None
 
-    raise NotImplementedError("remaining branches not yet implemented")
+    n_due = len(due)
+    n_new = len(new)
+    both = n_due > 0 and n_new > 0   # captured BEFORE any pop
+
+    if both:
+        arm, theta_due, theta_new = choose_with_samples(rng, due_post, new_post)
+    elif due:
+        arm = "due"
+        theta_due = theta_new = 0.0
+    else:
+        arm = "new"
+        theta_due = theta_new = 0.0
+
+    if arm == "due":
+        fact_id = due.pop(0)
+        row = conn.execute(
+            "SELECT ease_factor, due_date FROM card_state WHERE fact_id=?",
+            (fact_id,),
+        ).fetchone()
+        ease = row["ease_factor"] if row else 0.0
+        due_d = date.fromisoformat(row["due_date"]) if row else today
+        overdue = (today - due_d).days
+        if both:
+            reasoning = (
+                f"MAB: θ_due={theta_due:.2f}"
+                f"(α={due_post.alpha:.0f},β={due_post.beta:.0f})"
+                f" > θ_new={theta_new:.2f}"
+                f"(α={new_post.alpha:.0f},β={new_post.beta:.0f})"
+                f" → due | {n_due} due, {n_new} new"
+                f" | ease={ease:.2f}, overdue {overdue}d"
+            )
+        else:
+            reasoning = f"Due only (no unseen) | ease={ease:.2f}, overdue {overdue}d"
+        return Selection(
+            fact_id=fact_id,
+            pool_label="due",
+            reasoning=reasoning,
+            new_post=new_post,
+        )
+    else:  # arm == "new"
+        fact_id = new.pop(0)
+        updated_new_post = PoolPosterior(
+            alpha=new_post.alpha - 1, beta=new_post.beta + 1
+        )
+        if both:
+            reasoning = (
+                f"MAB: θ_new={theta_new:.2f}"
+                f"(α={new_post.alpha:.0f},β={new_post.beta:.0f})"
+                f" > θ_due={theta_due:.2f}"
+                f"(α={due_post.alpha:.0f},β={due_post.beta:.0f})"
+                f" → new | {n_new} new, {n_due} due"
+            )
+        else:
+            reasoning = f"New only (no due) | {n_new} unseen remaining"
+        return Selection(
+            fact_id=fact_id,
+            pool_label="new",
+            reasoning=reasoning,
+            new_post=updated_new_post,
+        )
 
 
 def _load_card_state(

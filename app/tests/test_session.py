@@ -804,3 +804,116 @@ def test_select_card_all_empty_returns_none(conn):
     sel = _select_card(random.Random(0), lapsed, due, new,
                        due_post, new_post, conn, TODAY)
     assert sel is None
+
+
+# ---------------------------------------------------------------------------
+# _select_card: MAB cases (both pools non-empty)
+# ---------------------------------------------------------------------------
+
+def test_select_card_mab_due_arm_label_and_reasoning(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue?", "ADue")
+    fid_new = _insert_fact_and_question(conn, "QNew?", "ANew", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.1,
+                     due_date=(TODAY - timedelta(days=3)))
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]   # both non-empty → MAB used
+    due_post = PoolPosterior(alpha=100.0, beta=1.0)   # due arm almost certain
+    new_post = PoolPosterior(alpha=1.0, beta=100.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "due"
+    assert sel.fact_id == fid_due
+    assert "MAB" in sel.reasoning
+    assert "→ due" in sel.reasoning
+    assert "ease=2.10" in sel.reasoning
+    assert "overdue 3d" in sel.reasoning
+
+
+def test_select_card_mab_new_arm_label_and_reasoning(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue2?", "ADue2")
+    fid_new = _insert_fact_and_question(conn, "QNew2?", "ANew2", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.5)
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]   # both non-empty → MAB used
+    due_post = PoolPosterior(alpha=1.0, beta=100.0)
+    new_post = PoolPosterior(alpha=100.0, beta=1.0)  # new arm almost certain
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "new"
+    assert sel.fact_id == fid_new
+    assert "MAB" in sel.reasoning
+    assert "→ new" in sel.reasoning
+
+
+def test_select_card_mab_new_arm_updates_new_post(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue3?", "ADue3")
+    fid_new = _insert_fact_and_question(conn, "QNew3?", "ANew3", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.5)
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]
+    due_post = PoolPosterior(alpha=1.0, beta=100.0)
+    new_post = PoolPosterior(alpha=10.0, beta=5.0)   # new arm almost certain
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel.pool_label == "new"
+    assert sel.new_post.alpha == 9.0   # alpha decrements by 1
+    assert sel.new_post.beta == 6.0    # beta increments by 1
+
+
+def test_select_card_mab_due_arm_new_post_unchanged(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue4?", "ADue4")
+    fid_new = _insert_fact_and_question(conn, "QNew4?", "ANew4", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.5)
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]
+    due_post = PoolPosterior(alpha=100.0, beta=1.0)  # due arm almost certain
+    new_post = PoolPosterior(alpha=3.0, beta=7.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel.pool_label == "due"
+    assert sel.new_post == new_post    # unchanged when due arm chosen
+
+
+# ---------------------------------------------------------------------------
+# _select_card: forced pool cases (single pool available)
+# ---------------------------------------------------------------------------
+
+def test_select_card_due_only_reasoning(conn):
+    fid = _insert_fact_and_question(conn, "QDueOnly?", "ADueOnly")
+    _seed_card_state(conn, fid, lapses=0, ease=1.8,
+                     due_date=(TODAY - timedelta(days=2)))
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid]
+    new = []           # empty new pool → forced due, no MAB
+    due_post = PoolPosterior(alpha=2.0, beta=2.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "due"
+    assert "Due only" in sel.reasoning
+    assert "MAB" not in sel.reasoning
+    assert "ease=1.80" in sel.reasoning
+    assert "overdue 2d" in sel.reasoning
+
+
+def test_select_card_new_only_reasoning(conn):
+    fid = _insert_fact_and_question(conn, "QNewOnly?", "ANewOnly")
+    rng = random.Random(0)
+    lapsed = deque()
+    due = []           # empty due pool → forced new, no MAB
+    new = [fid]
+    due_post = PoolPosterior(alpha=2.0, beta=2.0)
+    new_post = PoolPosterior(alpha=5.0, beta=3.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "new"
+    assert "New only" in sel.reasoning
+    assert "MAB" not in sel.reasoning
+    assert "1 unseen remaining" in sel.reasoning
