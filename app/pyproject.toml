@@ -8,6 +8,7 @@ dependencies = ["anthropic", "flask>=3.0"]
 lituk = "lituk.cli:main"
 lituk-ingest = "lituk.ingest:main"
 lituk-review = "lituk.review:main"
+lituk-stats = "lituk.stats:main"
 lituk-tag = "lituk.tag:main"
 lituk-web = "lituk.web.server:main"
 
