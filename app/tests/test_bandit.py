@@ -1,6 +1,6 @@
 import random
 
-from lituk.review.bandit import PoolPosterior, choose
+from lituk.review.bandit import PoolPosterior, choose, choose_with_samples
 
 
 def test_pool_posterior_is_frozen():
@@ -60,3 +60,32 @@ def test_choose_high_failure_rate_favours_due():
     new = PoolPosterior(alpha=10.0, beta=90.0)    # new arm: 90% explored
     results = [choose(rng, due, new) for _ in range(20)]
     assert all(r == "due" for r in results)
+
+
+def test_choose_with_samples_returns_due_arm_and_thetas():
+    rng = random.Random(42)
+    due = PoolPosterior(alpha=100.0, beta=1.0)
+    new = PoolPosterior(alpha=1.0, beta=100.0)
+    arm, theta_due, theta_new = choose_with_samples(rng, due, new)
+    assert arm == "due"
+    assert theta_due > theta_new
+
+
+def test_choose_with_samples_returns_new_arm_and_thetas():
+    rng = random.Random(42)
+    due = PoolPosterior(alpha=1.0, beta=100.0)
+    new = PoolPosterior(alpha=100.0, beta=1.0)
+    arm, theta_due, theta_new = choose_with_samples(rng, due, new)
+    assert arm == "new"
+    assert theta_new > theta_due
+
+
+def test_choose_with_samples_thetas_are_floats():
+    rng = random.Random(7)
+    due = PoolPosterior(alpha=2.0, beta=2.0)
+    new = PoolPosterior(alpha=2.0, beta=2.0)
+    _, theta_due, theta_new = choose_with_samples(rng, due, new)
+    assert isinstance(theta_due, float)
+    assert isinstance(theta_new, float)
+    assert 0.0 <= theta_due <= 1.0
+    assert 0.0 <= theta_new <= 1.0
