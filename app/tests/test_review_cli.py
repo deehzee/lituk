@@ -59,6 +59,7 @@ def _known_prompt(correct_at=0) -> Prompt:
         correct_indices=[0],  # after shuffle, correct is always first
         is_multi=False,
         is_true_false=False,
+        explanation="Correct is the right answer.",
     )
 
 
@@ -106,6 +107,7 @@ def test_show_prompt_multi_hint_shown():
         choices=["Red", "Blue", "Green", "Yellow"],
         correct_indices=[0, 1],
         is_multi=True, is_true_false=False,
+        explanation="Red and Blue are primary colours.",
     )
     with patch("builtins.input", return_value="A,B"), \
          patch("sys.stdout", new_callable=StringIO) as out:

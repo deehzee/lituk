@@ -21,17 +21,18 @@ def _insert_fact(conn, qtext, atext):
 
 
 def _insert_question(conn, fact_id, source_test, q_number, choices, correct_letters,
-                     is_true_false=0, is_multi=0):
+                     is_true_false=0, is_multi=0, explanation="Test explanation."):
     conn.execute(
         "INSERT INTO questions"
         " (source_test, q_number, question_text, choices, correct_letters,"
-        "  is_true_false, is_multi, fact_id)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "  explanation, is_true_false, is_multi, fact_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             source_test, q_number,
             "Question text",
             json.dumps(choices),
             json.dumps(correct_letters),
+            explanation,
             is_true_false, is_multi, fact_id,
         ),
     )
@@ -159,3 +160,9 @@ def test_grade_answer_partial_multi_is_wrong(conn, multi_answer_fact):
     rng = random.Random(1)
     prompt = build_prompt(conn, multi_answer_fact, rng)
     assert grade_answer(prompt, prompt.correct_indices[:1]) is False
+
+
+def test_build_prompt_has_explanation(conn, single_answer_fact):
+    rng = random.Random(0)
+    prompt = build_prompt(conn, single_answer_fact, rng)
+    assert prompt.explanation == "Test explanation."

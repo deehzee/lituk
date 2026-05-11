@@ -20,6 +20,7 @@ def _make_prompt(correct_indices=None):
         correct_indices=correct_indices,
         is_multi=False,
         is_true_false=False,
+        explanation="The year was 1066.",
     )
 
 
