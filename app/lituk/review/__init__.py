@@ -67,7 +67,7 @@ def main(
     parsed = parser.parse_args(args)
 
     if parsed.dry_run:
-        _src = sqlite3.connect(parsed.db)
+        _src = init_db(parsed.db)  # ensures schema exists before backup
         conn = sqlite3.connect(":memory:")
         _src.backup(conn)
         _src.close()
