@@ -19,7 +19,8 @@ from lituk.review.presenter import Prompt
 def _insert_fact_and_question(conn, q_text="Q?", a_text="Correct",
                                source_test=1, q_num=1,
                                choices=None, correct_letters=None,
-                               is_multi=0, is_true_false=0, topic=None):
+                               is_multi=0, is_true_false=0, topic=None,
+                               explanation="Test explanation."):
     if choices is None:
         choices = ["Correct", "Wrong1", "Wrong2", "Wrong3"]
     if correct_letters is None:
@@ -40,10 +41,10 @@ def _insert_fact_and_question(conn, q_text="Q?", a_text="Correct",
     conn.execute(
         "INSERT OR IGNORE INTO questions"
         " (source_test, q_number, question_text, choices, correct_letters,"
-        "  is_true_false, is_multi, fact_id)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "  explanation, is_true_false, is_multi, fact_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (source_test, q_num, q_text, json.dumps(choices),
-         json.dumps(correct_letters), is_true_false, is_multi, fid),
+         json.dumps(correct_letters), explanation, is_true_false, is_multi, fid),
     )
     conn.commit()
     return fid
