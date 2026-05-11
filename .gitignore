@@ -1,2 +1,5 @@
 .worktrees/
 .env
+*.bkp
+*.bkp.*
+.playwright-mcp/
