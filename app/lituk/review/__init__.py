@@ -1,6 +1,7 @@
 import argparse
 import pathlib
 import random
+import sqlite3
 import sys
 import uuid
 from datetime import date
@@ -54,9 +55,26 @@ def main(
         metavar="N[,N]",
         help="Chapter numbers to study, comma-separated (1-5). Default: all.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help=(
+            "Run session against an in-memory copy of the DB; discard all "
+            "writes on exit."
+        ),
+    )
     parsed = parser.parse_args(args)
 
-    conn = init_db(parsed.db)
+    if parsed.dry_run:
+        _src = sqlite3.connect(parsed.db)
+        conn = sqlite3.connect(":memory:")
+        _src.backup(conn)
+        _src.close()
+        conn.row_factory = sqlite3.Row
+    else:
+        conn = init_db(parsed.db)
+
     _today = date.today()
 
     if parsed.mode == "regular":
@@ -72,6 +90,8 @@ def main(
         _cov = coverage(conn)
         _unseen = _cov["total"] - _cov["seen"]
         _banner = f"Explore mode  •  {_unseen} unseen of {_cov['total']} total"
+    if parsed.dry_run:
+        _banner += "  (dry run — no state will be saved)"
     print(_banner)
 
     config = SessionConfig(size=parsed.size)

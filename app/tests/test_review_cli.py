@@ -441,3 +441,70 @@ def test_banner_explore_mode(tmp_path):
     text = out.getvalue()
     assert "Explore mode" in text
     assert "unseen" in text
+
+
+# ---------------------------------------------------------------------------
+# --dry-run flag
+# ---------------------------------------------------------------------------
+
+def test_dry_run_no_writes_to_disk(tmp_path):
+    """After a dry-run session, the on-disk DB still has zero review rows."""
+    db_path = str(tmp_path / "test.db")
+    conn = init_db(db_path)
+    _insert_fact_and_question(conn)
+    conn.close()
+
+    class FixedRNG(random.Random):
+        def shuffle(self, x):
+            pass
+        def choice(self, seq):
+            return seq[0]
+        def betavariate(self, a, b):
+            return 0.5
+
+    rng = FixedRNG()
+    inputs = iter(["A", "g"])
+    with patch("builtins.input", side_effect=inputs), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit) as exc:
+            main(["--db", db_path, "--size", "1", "--dry-run"], _rng=rng)
+    assert exc.value.code == 0
+
+    # On-disk DB must still have zero reviews
+    conn = init_db(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+    conn.close()
+    assert count == 0
+
+
+def test_dry_run_banner_contains_dry_run(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_session"), \
+         patch("sys.stdout", new_callable=StringIO) as out:
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--dry-run"])
+    text = out.getvalue()
+    assert "dry run" in text
+
+
+def test_dry_run_mode_drill_smoke(tmp_path):
+    """--dry-run --mode drill runs without error."""
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_drill_session"), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit) as exc:
+            main(["--db", db_path, "--mode", "drill", "--dry-run"])
+    assert exc.value.code == 0
+
+
+def test_dry_run_mode_explore_smoke(tmp_path):
+    """--dry-run --mode explore runs without error."""
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_explore_session"), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit) as exc:
+            main(["--db", db_path, "--mode", "explore", "--dry-run"])
+    assert exc.value.code == 0
