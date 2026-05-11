@@ -300,3 +300,144 @@ def test_main_topic_flag_accepted(tmp_path):
         with pytest.raises(SystemExit) as exc:
             main(["--db", db_path, "--size", "1", "--topic", "3"], _rng=rng)
     assert exc.value.code == 0
+
+
+# ---------------------------------------------------------------------------
+# --mode flag
+# ---------------------------------------------------------------------------
+
+def test_main_mode_drill_calls_run_drill_session(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_drill_session") as mock_drill, \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "drill"])
+    mock_drill.assert_called_once()
+
+
+def test_main_mode_explore_calls_run_explore_session(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_explore_session") as mock_exp, \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "explore"])
+    mock_exp.assert_called_once()
+
+
+def test_main_mode_regular_calls_run_session(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_session") as mock_sess, \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "regular"])
+    mock_sess.assert_called_once()
+
+
+def test_main_default_mode_calls_run_session(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_session") as mock_sess, \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path])
+    mock_sess.assert_called_once()
+
+
+def test_main_invalid_mode_exits_two(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("sys.stderr", new_callable=StringIO):
+        with pytest.raises(SystemExit) as exc:
+            main(["--db", db_path, "--mode", "foo"])
+    assert exc.value.code == 2
+
+
+# ---------------------------------------------------------------------------
+# --chapters alias
+# ---------------------------------------------------------------------------
+
+def test_main_chapters_flag_same_as_topic(tmp_path):
+    """--chapters produces same topics list as --topic."""
+    db_path = str(tmp_path / "test.db")
+    conn = init_db(db_path)
+    _insert_fact_and_question(conn, topic=1)
+    conn.close()
+
+    captured_kwargs: dict = {}
+
+    def _capture_run_session(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        from lituk.review.session import SessionResult
+        return SessionResult(correct=0, total=0, weak_facts=[])
+
+    with patch("lituk.review.run_session", side_effect=_capture_run_session), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--chapters", "1,3"])
+
+    assert captured_kwargs.get("topics") == [1, 3]
+
+
+def test_main_topic_flag_still_works_after_alias(tmp_path):
+    """--topic still works (alias, not replacement)."""
+    db_path = str(tmp_path / "test.db")
+    conn = init_db(db_path)
+    _insert_fact_and_question(conn, topic=2)
+    conn.close()
+
+    captured_kwargs: dict = {}
+
+    def _capture_run_session(*args, **kwargs):
+        captured_kwargs.update(kwargs)
+        from lituk.review.session import SessionResult
+        return SessionResult(correct=0, total=0, weak_facts=[])
+
+    with patch("lituk.review.run_session", side_effect=_capture_run_session), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--topic", "2"])
+
+    assert captured_kwargs.get("topics") == [2]
+
+
+# ---------------------------------------------------------------------------
+# Pre-session banner
+# ---------------------------------------------------------------------------
+
+def test_banner_regular_mode(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_session"), \
+         patch("sys.stdout", new_callable=StringIO) as out:
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "regular"])
+    text = out.getvalue()
+    assert "Regular mode" in text
+    assert "due today" in text
+
+
+def test_banner_drill_mode(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_drill_session"), \
+         patch("sys.stdout", new_callable=StringIO) as out:
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "drill"])
+    text = out.getvalue()
+    assert "Drill mode" in text
+    assert "missed facts" in text
+
+
+def test_banner_explore_mode(tmp_path):
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    with patch("lituk.review.run_explore_session"), \
+         patch("sys.stdout", new_callable=StringIO) as out:
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "explore"])
+    text = out.getvalue()
+    assert "Explore mode" in text
+    assert "unseen" in text
