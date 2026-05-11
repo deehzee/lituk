@@ -13,6 +13,7 @@ from lituk.review.session import (
     SessionConfig,
     SessionResult,
     _compute_posteriors,
+    _drill_reasoning,
     _select_card,
     run_drill_session,
     run_explore_session,
@@ -917,3 +918,47 @@ def test_select_card_new_only_reasoning(conn):
     assert "New only" in sel.reasoning
     assert "MAB" not in sel.reasoning
     assert "1 unseen remaining" in sel.reasoning
+
+
+# ---------------------------------------------------------------------------
+# _drill_reasoning
+# ---------------------------------------------------------------------------
+
+def _seed_review(conn, fact_id, correct, reviewed_at):
+    conn.execute(
+        "INSERT INTO reviews"
+        " (fact_id, question_id, reviewed_at, grade, correct, pool,"
+        "  ease_after, interval_after)"
+        " VALUES (?, 1, ?, 0, ?, 'drill', 2.5, 1)",
+        (fact_id, reviewed_at, int(correct)),
+    )
+    conn.commit()
+
+
+def test_drill_reasoning_includes_lapses_and_days(conn):
+    fid = _insert_fact_and_question(conn, "QDrill?", "ADrill")
+    _seed_card_state(
+        conn, fid, lapses=3,
+        last_reviewed_at=datetime(2026, 5, 6, 10, 0,
+                                  tzinfo=timezone.utc).isoformat(),
+    )
+    _seed_review(conn, fid, correct=False,
+                 reviewed_at=datetime(2026, 5, 4, 10, 0,
+                                      tzinfo=timezone.utc).isoformat())
+    result = _drill_reasoning(conn, fid, TODAY)
+    # TODAY = date(2026, 5, 9)
+    assert "lapses=3" in result
+    assert "last seen 3d ago" in result   # 2026-05-06 → 3 days before TODAY
+    assert "last wrong 5d ago" in result  # 2026-05-04 → 5 days before TODAY
+
+
+def test_drill_reasoning_no_wrong_review(conn):
+    fid = _insert_fact_and_question(conn, "QDrill2?", "ADrill2")
+    _seed_card_state(conn, fid, lapses=1,
+                     last_reviewed_at=datetime(2026, 5, 8, 10, 0,
+                     tzinfo=timezone.utc).isoformat())
+    # No wrong reviews inserted
+    result = _drill_reasoning(conn, fid, TODAY)
+    assert "lapses=1" in result
+    assert "last seen 1d ago" in result
+    assert "never wrong" in result

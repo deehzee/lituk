@@ -231,6 +231,42 @@ def _select_card(
         )
 
 
+def _drill_reasoning(
+    conn: sqlite3.Connection, fact_id: int, today: date
+) -> str:
+    """Produce reasoning line for drill-mode cards showing per-card stats."""
+    row = conn.execute(
+        "SELECT lapses, last_reviewed_at FROM card_state WHERE fact_id=?",
+        (fact_id,),
+    ).fetchone()
+    lapses = row["lapses"] if row else 0
+    if row and row["last_reviewed_at"]:
+        last_dt = datetime.fromisoformat(row["last_reviewed_at"])
+        if last_dt.tzinfo is not None:
+            last_dt = last_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        days_ago = (today - last_dt.date()).days
+        last_seen = f"last seen {days_ago}d ago"
+    else:
+        last_seen = "never seen"
+
+    wrong_row = conn.execute(
+        "SELECT reviewed_at FROM reviews"
+        " WHERE fact_id=? AND correct=0"
+        " ORDER BY reviewed_at DESC LIMIT 1",
+        (fact_id,),
+    ).fetchone()
+    if wrong_row:
+        wrong_dt = datetime.fromisoformat(wrong_row["reviewed_at"])
+        if wrong_dt.tzinfo is not None:
+            wrong_dt = wrong_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        wrong_days = (today - wrong_dt.date()).days
+        last_wrong = f"last wrong {wrong_days}d ago"
+    else:
+        last_wrong = "never wrong"
+
+    return f"Drill: lapses={lapses}, {last_seen}, {last_wrong}"
+
+
 def _load_card_state(
     conn: sqlite3.Connection, fact_id: int, today: date
 ) -> CardState:
