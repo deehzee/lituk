@@ -1,6 +1,5 @@
 import runpy
 import sys
-from io import StringIO
 from unittest.mock import patch
 
 import pytest
@@ -54,31 +53,31 @@ def test_main_unknown_subcommand_exits_two(capsys):
 # Delegation to subcommands
 # ---------------------------------------------------------------------------
 
-def test_main_delegates_review(capsys):
+def test_main_delegates_review():
     with patch("lituk.review.main") as mock_main:
         main(["review", "--help"])
     mock_main.assert_called_once_with(["--help"])
 
 
-def test_main_delegates_ingest(capsys):
+def test_main_delegates_ingest():
     with patch("lituk.ingest.main") as mock_main:
         main(["ingest", "--help"])
     mock_main.assert_called_once_with(["--help"])
 
 
-def test_main_delegates_tag(capsys):
+def test_main_delegates_tag():
     with patch("lituk.tag.main") as mock_main:
         main(["tag", "--help"])
     mock_main.assert_called_once_with(["--help"])
 
 
-def test_main_delegates_web(capsys):
+def test_main_delegates_web():
     with patch("lituk.web.server.main") as mock_main:
         main(["web", "--help"])
     mock_main.assert_called_once_with(["--help"])
 
 
-def test_main_delegates_stats(capsys):
+def test_main_delegates_stats():
     with patch("lituk.stats.main") as mock_main:
         main(["stats", "--help"])
     mock_main.assert_called_once_with(["--help"])
@@ -88,7 +87,7 @@ def test_main_delegates_stats(capsys):
 # sys.argv default
 # ---------------------------------------------------------------------------
 
-def test_main_reads_sysargv_when_argv_none(capsys):
+def test_main_reads_sysargv_when_argv_none():
     """When called with no argument, reads sys.argv[1:]."""
     with patch.object(sys, "argv", ["lituk"]):
         with pytest.raises(SystemExit) as exc:
@@ -116,4 +115,4 @@ def test_ingest_main_accepts_args_parameter():
     from lituk.ingest import main as ingest_main
     import inspect
     sig = inspect.signature(ingest_main)
-    assert "args" in sig.parameters
+    assert "argv" in sig.parameters
