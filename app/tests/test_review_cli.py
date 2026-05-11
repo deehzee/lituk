@@ -186,13 +186,13 @@ def test_show_summary_prints_weak_count():
 # TerminalUI.show_reasoning
 # ---------------------------------------------------------------------------
 
-def test_show_reasoning_prints_ansi_dim(capsys):
+def test_show_reasoning_prints_dark_grey(capsys):
     ui = TerminalUI()
     ui.show_reasoning(
         "MAB: θ_due=0.72 → due | 8 due, 3 new | ease=2.10, overdue 3d"
     )
     captured = capsys.readouterr()
-    assert "\033[2m" in captured.out
+    assert "\033[90m" in captured.out
     assert "MAB:" in captured.out
     assert "\033[0m" in captured.out
 

@@ -21,11 +21,11 @@ class TerminalUI:
         self._card_num = 0
 
     def show_reasoning(self, text: str) -> None:
-        print(f"\033[2m  {text}\033[0m")
+        print(f"\033[90m  {text}\033[0m")
 
     def show_prompt(self, prompt: Prompt) -> list[int]:
         self._card_num += 1
-        print(f"\n--- Card {self._card_num} ---")
+        print(f"--- Card {self._card_num} ---")
         print(prompt.text)
         for i, choice in enumerate(prompt.choices):
             print(f"  {chr(ord('A') + i)}) {choice}")
@@ -48,6 +48,7 @@ class TerminalUI:
                     "  Grade: [a]gain  [h]ard  [g]ood  [e]asy: "
                 ).strip().lower()
                 if raw in _LETTER_TO_GRADE:
+                    print()
                     return _LETTER_TO_GRADE[raw]
                 print("  Enter a, h, g, or e.")
         else:
@@ -55,6 +56,7 @@ class TerminalUI:
                 prompt.choices[i] for i in sorted(prompt.correct_indices)
             )
             print(f"  Wrong! Answer: {correct_text}")
+            print()
             return 0
 
     def show_summary(self, result: SessionResult) -> None:
