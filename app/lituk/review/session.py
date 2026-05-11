@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
-from lituk.review.bandit import PoolPosterior, choose, choose_with_samples
+from lituk.review.bandit import PoolPosterior, choose_with_samples
 from lituk.review.presenter import Prompt, build_prompt, grade_answer
 from lituk.review.scheduler import CardState, initial_state
 from lituk.review.scheduler import update as sm2_update
@@ -382,9 +382,6 @@ def run_session(
     rng.shuffle(new)
     new_post, due_post = _compute_posteriors(conn, today, topics)
 
-    # In-memory counters for mid-session posterior updates
-    n_unexplored = len(new)
-    n_explored = conn.execute("SELECT COUNT(*) FROM card_state").fetchone()[0]
     cutoff = (today - timedelta(days=30)).isoformat()
     row = conn.execute(
         "SELECT"
@@ -403,39 +400,19 @@ def run_session(
     weak: set[int] = set()
 
     for _ in range(config.size):
-        if lapsed:
-            fact_id = lapsed.popleft()
-            pool_label = "lapsed"
-        else:
-            due_ok = bool(due)
-            new_ok = bool(new)
-            if not due_ok and not new_ok:
-                break
-
-            if due_ok and new_ok:
-                arm = choose(rng, due_post, new_post)
-            elif due_ok:
-                arm = "due"
-            else:
-                arm = "new"
-
-            if arm == "due":
-                fact_id = due.pop(0)
-                pool_label = "due"
-            else:
-                fact_id = new.pop(0)
-                pool_label = "new"
-                n_unexplored -= 1
-                n_explored += 1
-                new_post = PoolPosterior(
-                    alpha=n_unexplored + 1, beta=n_explored + 1
-                )
+        sel = _select_card(
+            rng, lapsed, due, new, due_post, new_post, conn, today
+        )
+        if sel is None:
+            break
+        new_post = sel.new_post
+        ui.show_reasoning(sel.reasoning)
 
         correct, _ = _present_and_grade(
-            conn, today, ui, fact_id, pool_label, rng, session_id
+            conn, today, ui, sel.fact_id, sel.pool_label, rng, session_id
         )
 
-        if pool_label in ("due", "lapsed"):
+        if sel.pool_label in ("due", "lapsed"):
             if correct:
                 n_correct += 1
             else:
@@ -445,8 +422,8 @@ def run_session(
         if correct:
             correct_count += 1
         else:
-            weak.add(fact_id)
-            lapsed.append(fact_id)
+            weak.add(sel.fact_id)
+            lapsed.append(sel.fact_id)
 
         total += 1
 

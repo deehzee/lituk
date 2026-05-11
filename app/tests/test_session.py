@@ -136,6 +136,7 @@ def test_one_card_session_writes_card_state(conn):
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
     assert result.total == 1
     assert result.correct == 1
+    assert len(ui.reasonings) == result.total
     row = conn.execute(
         "SELECT * FROM card_state WHERE fact_id=?", (fid,)
     ).fetchone()
@@ -187,6 +188,7 @@ def test_lapsed_card_reappears_in_session(conn):
     # fact_id must appear at least twice in prompts (once wrong, once right)
     shown_facts = [p.fact_id for p in ui.prompts_shown]
     assert shown_facts.count(fid) >= 2
+    assert len(ui.reasonings) == result.total
 
 
 def test_lapsed_card_counted_toward_session_size(conn):
@@ -208,6 +210,7 @@ def test_lapsed_card_counted_toward_session_size(conn):
     )
     # Session should end after 2 slots regardless of lapsed state
     assert result.total == 2
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------
@@ -221,6 +224,7 @@ def test_empty_new_pool_falls_back_to_due(conn):
     ui = StubUI()
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert result.total == 3
+    assert len(ui.reasonings) == result.total
 
 
 def test_empty_due_pool_falls_back_to_new(conn):
@@ -229,6 +233,7 @@ def test_empty_due_pool_falls_back_to_new(conn):
     ui = StubUI()
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert result.total == 3
+    assert len(ui.reasonings) == result.total
 
 
 def test_fresh_db_all_new_fills_session(conn):
@@ -237,6 +242,7 @@ def test_fresh_db_all_new_fills_session(conn):
     ui = StubUI()
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=24), ui)
     assert result.total == 24
+    assert len(ui.reasonings) == result.total
 
 
 def test_no_new_cap_all_new_can_fill_session(conn):
@@ -250,6 +256,7 @@ def test_no_new_cap_all_new_can_fill_session(conn):
     ).fetchone()[0]
     assert result.total == 10
     assert new_count == 10
+    assert len(ui.reasonings) == result.total
 
 
 def test_bandit_choose_called_with_both_pools_non_empty(conn):
@@ -269,6 +276,7 @@ def test_bandit_choose_called_with_both_pools_non_empty(conn):
         "SELECT COUNT(*) FROM reviews WHERE pool='new'"
     ).fetchone()[0]
     assert due_count + new_count == 6
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------
@@ -282,6 +290,7 @@ def test_empty_pools_early_exit(conn):
     )
     assert result.total == 0
     assert result.correct == 0
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +312,7 @@ def test_weak_facts_populated_on_lapse(conn):
         conn, TODAY, random.Random(0), SessionConfig(size=1), ui
     )
     assert fid in result.weak_facts
+    assert len(ui.reasonings) == result.total
 
 
 def test_weak_facts_empty_on_all_correct(conn):
