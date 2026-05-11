@@ -5,6 +5,7 @@ requires-python = ">=3.11"
 dependencies = ["anthropic", "flask>=3.0"]
 
 [project.scripts]
+lituk = "lituk.cli:main"
 lituk-ingest = "lituk.ingest:main"
 lituk-review = "lituk.review:main"
 lituk-tag = "lituk.tag:main"
