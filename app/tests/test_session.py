@@ -1,15 +1,20 @@
 import json
 import random
-from datetime import date, timedelta
+from collections import deque
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 from lituk.db import init_db
+from lituk.review.bandit import PoolPosterior
 from lituk.review.presenter import Prompt
 from lituk.review.session import (
+    Selection,
     SessionConfig,
     SessionResult,
     _compute_posteriors,
+    _drill_reasoning,
+    _select_card,
     run_drill_session,
     run_explore_session,
     run_session,
@@ -23,7 +28,7 @@ TODAY = date(2026, 5, 9)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _insert_fact_and_question(conn, q_text, a_text, source_test, q_num,
+def _insert_fact_and_question(conn, q_text, a_text, source_test=1, q_num=1,
                                choices=None, correct_letters=None,
                                topic=None):
     if choices is None:
@@ -67,6 +72,22 @@ def _seed_due_card(conn, fact_id, due_date=None):
     conn.commit()
 
 
+def _seed_card_state(conn, fact_id, lapses=1, last_reviewed_at=None,
+                     ease=2.5, interval=1, due_date: date | None = None):
+    if last_reviewed_at is None:
+        last_reviewed_at = datetime(2026, 5, 4, 12, 0, 0,
+                                    tzinfo=timezone.utc).isoformat()
+    due_date_str = due_date.isoformat() if due_date else TODAY.isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO card_state"
+        " (fact_id, ease_factor, interval_days, repetitions,"
+        "  due_date, last_reviewed_at, lapses)"
+        " VALUES (?, ?, ?, 1, ?, ?, ?)",
+        (fact_id, ease, interval, due_date_str, last_reviewed_at, lapses),
+    )
+    conn.commit()
+
+
 class StubUI:
     """Always answers correctly (index 0 in prompt.correct_indices) and grades Good."""
 
@@ -75,6 +96,10 @@ class StubUI:
         self.grade = grade
         self.prompts_shown: list[Prompt] = []
         self.feedbacks: list[tuple[Prompt, bool]] = []
+        self.reasonings: list[str] = []
+
+    def show_reasoning(self, text: str) -> None:
+        self.reasonings.append(text)
 
     def show_prompt(self, prompt: Prompt) -> list[int]:
         self.prompts_shown.append(prompt)
@@ -111,6 +136,7 @@ def test_one_card_session_writes_card_state(conn):
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
     assert result.total == 1
     assert result.correct == 1
+    assert len(ui.reasonings) == result.total
     row = conn.execute(
         "SELECT * FROM card_state WHERE fact_id=?", (fid,)
     ).fetchone()
@@ -162,6 +188,7 @@ def test_lapsed_card_reappears_in_session(conn):
     # fact_id must appear at least twice in prompts (once wrong, once right)
     shown_facts = [p.fact_id for p in ui.prompts_shown]
     assert shown_facts.count(fid) >= 2
+    assert len(ui.reasonings) == result.total
 
 
 def test_lapsed_card_counted_toward_session_size(conn):
@@ -183,6 +210,7 @@ def test_lapsed_card_counted_toward_session_size(conn):
     )
     # Session should end after 2 slots regardless of lapsed state
     assert result.total == 2
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------
@@ -196,6 +224,7 @@ def test_empty_new_pool_falls_back_to_due(conn):
     ui = StubUI()
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert result.total == 3
+    assert len(ui.reasonings) == result.total
 
 
 def test_empty_due_pool_falls_back_to_new(conn):
@@ -204,6 +233,7 @@ def test_empty_due_pool_falls_back_to_new(conn):
     ui = StubUI()
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert result.total == 3
+    assert len(ui.reasonings) == result.total
 
 
 def test_fresh_db_all_new_fills_session(conn):
@@ -212,6 +242,7 @@ def test_fresh_db_all_new_fills_session(conn):
     ui = StubUI()
     result = run_session(conn, TODAY, random.Random(0), SessionConfig(size=24), ui)
     assert result.total == 24
+    assert len(ui.reasonings) == result.total
 
 
 def test_no_new_cap_all_new_can_fill_session(conn):
@@ -225,6 +256,7 @@ def test_no_new_cap_all_new_can_fill_session(conn):
     ).fetchone()[0]
     assert result.total == 10
     assert new_count == 10
+    assert len(ui.reasonings) == result.total
 
 
 def test_bandit_choose_called_with_both_pools_non_empty(conn):
@@ -244,6 +276,7 @@ def test_bandit_choose_called_with_both_pools_non_empty(conn):
         "SELECT COUNT(*) FROM reviews WHERE pool='new'"
     ).fetchone()[0]
     assert due_count + new_count == 6
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------
@@ -257,6 +290,7 @@ def test_empty_pools_early_exit(conn):
     )
     assert result.total == 0
     assert result.correct == 0
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +312,7 @@ def test_weak_facts_populated_on_lapse(conn):
         conn, TODAY, random.Random(0), SessionConfig(size=1), ui
     )
     assert fid in result.weak_facts
+    assert len(ui.reasonings) == result.total
 
 
 def test_weak_facts_empty_on_all_correct(conn):
@@ -450,11 +485,12 @@ def test_drill_session_pulls_only_lapsed_facts(conn):
     _seed_lapsed_card(conn, fid_lapsed, lapses=1)
 
     ui = StubUI()
-    run_drill_session(
+    result = run_drill_session(
         conn, TODAY, random.Random(0), SessionConfig(size=5), ui
     )
     shown = {p.fact_id for p in ui.prompts_shown}
     assert fid_lapsed in shown
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_excludes_non_lapsed_facts(conn):
@@ -467,48 +503,57 @@ def test_drill_session_excludes_non_lapsed_facts(conn):
         conn, TODAY, random.Random(0), SessionConfig(size=5), ui
     )
     assert result.total == 0  # drill pool is empty
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_writes_pool_drill(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=2)
 
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    ui = StubUI()
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
 
     row = conn.execute("SELECT pool FROM reviews").fetchone()
     assert row["pool"] == "drill"
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_updates_sm2(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=1)
 
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    ui = StubUI()
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
 
     row = conn.execute(
         "SELECT repetitions FROM card_state WHERE fact_id=?", (fid,)
     ).fetchone()
     assert row["repetitions"] > 0
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_writes_review_with_drill_pool(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=1)
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    ui = StubUI()
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
     row = conn.execute("SELECT pool FROM reviews").fetchone()
     assert row["pool"] == "drill"
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_id_written(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=1)
 
-    run_drill_session(
-        conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI(),
+    ui = StubUI()
+    result = run_drill_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=1), ui,
         session_id="drill-uuid",
     )
     row = conn.execute("SELECT session_id FROM reviews").fetchone()
     assert row["session_id"] == "drill-uuid"
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_topic_filter(conn):
@@ -518,13 +563,14 @@ def test_drill_session_topic_filter(conn):
     _seed_lapsed_card(conn, fid4, lapses=1)
 
     ui = StubUI()
-    run_drill_session(
+    result = run_drill_session(
         conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
         topics=[3],
     )
     shown = {p.fact_id for p in ui.prompts_shown}
     assert fid3 in shown
     assert fid4 not in shown
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_lapsed_in_session_reinforcement(conn):
@@ -546,10 +592,11 @@ def test_drill_session_lapsed_in_session_reinforcement(conn):
             return list(prompt.correct_indices)
 
     ui = WrongThenRightUI()
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert ui.prompts_shown.count(ui.prompts_shown[0]) >= 1
     shown_facts = [p.fact_id for p in ui.prompts_shown]
     assert shown_facts.count(fid) >= 2
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------
@@ -736,3 +783,208 @@ def test_compute_posteriors_topic_filter(conn):
     # ch2: 1 unexplored, 0 explored → Beta(2, 1)
     assert new_post.alpha == 2
     assert new_post.beta == 1
+
+
+# ---------------------------------------------------------------------------
+# _select_card: lapsed case
+# ---------------------------------------------------------------------------
+
+def test_select_card_lapsed_returns_lapsed_label(conn):
+    fid = _insert_fact_and_question(conn, "Q?", "A")
+    _seed_card_state(conn, fid, lapses=2,
+                     last_reviewed_at=datetime(2026, 5, 4, 12, 0,
+                     tzinfo=timezone.utc).isoformat())
+    rng = random.Random(1)
+    lapsed = deque([fid])
+    due = []
+    new = []
+    due_post = PoolPosterior(alpha=1.0, beta=1.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "lapsed"
+    assert sel.fact_id == fid
+    assert "Lapsed" in sel.reasoning
+    assert "lapses=2" in sel.reasoning
+    assert "last seen 5d ago" in sel.reasoning
+
+
+def test_select_card_lapsed_pops_from_deque(conn):
+    fid = _insert_fact_and_question(conn, "Q2?", "A2")
+    _seed_card_state(conn, fid, lapses=1)
+    lapsed = deque([fid])
+    due = []
+    new = []
+    due_post = PoolPosterior(alpha=1.0, beta=1.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    _select_card(random.Random(0), lapsed, due, new,
+                 due_post, new_post, conn, TODAY)
+    assert len(lapsed) == 0
+
+
+def test_select_card_all_empty_returns_none(conn):
+    lapsed = deque()
+    due = []
+    new = []
+    due_post = PoolPosterior(alpha=1.0, beta=1.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    sel = _select_card(random.Random(0), lapsed, due, new,
+                       due_post, new_post, conn, TODAY)
+    assert sel is None
+
+
+# ---------------------------------------------------------------------------
+# _select_card: MAB cases (both pools non-empty)
+# ---------------------------------------------------------------------------
+
+def test_select_card_mab_due_arm_label_and_reasoning(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue?", "ADue")
+    fid_new = _insert_fact_and_question(conn, "QNew?", "ANew", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.1,
+                     due_date=(TODAY - timedelta(days=3)))
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]   # both non-empty → MAB used
+    due_post = PoolPosterior(alpha=100.0, beta=1.0)   # due arm almost certain
+    new_post = PoolPosterior(alpha=1.0, beta=100.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "due"
+    assert sel.fact_id == fid_due
+    assert "MAB" in sel.reasoning
+    assert "→ due" in sel.reasoning
+    assert "ease=2.10" in sel.reasoning
+    assert "overdue 3d" in sel.reasoning
+
+
+def test_select_card_mab_new_arm_label_and_reasoning(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue2?", "ADue2")
+    fid_new = _insert_fact_and_question(conn, "QNew2?", "ANew2", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.5)
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]   # both non-empty → MAB used
+    due_post = PoolPosterior(alpha=1.0, beta=100.0)
+    new_post = PoolPosterior(alpha=100.0, beta=1.0)  # new arm almost certain
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "new"
+    assert sel.fact_id == fid_new
+    assert "MAB" in sel.reasoning
+    assert "→ new" in sel.reasoning
+
+
+def test_select_card_mab_new_arm_updates_new_post(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue3?", "ADue3")
+    fid_new = _insert_fact_and_question(conn, "QNew3?", "ANew3", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.5)
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]
+    due_post = PoolPosterior(alpha=1.0, beta=100.0)
+    new_post = PoolPosterior(alpha=10.0, beta=5.0)   # new arm almost certain
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel.pool_label == "new"
+    assert sel.new_post.alpha == 9.0   # alpha decrements by 1
+    assert sel.new_post.beta == 6.0    # beta increments by 1
+
+
+def test_select_card_mab_due_arm_new_post_unchanged(conn):
+    fid_due = _insert_fact_and_question(conn, "QDue4?", "ADue4")
+    fid_new = _insert_fact_and_question(conn, "QNew4?", "ANew4", source_test=2, q_num=2)
+    _seed_card_state(conn, fid_due, lapses=0, ease=2.5)
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid_due]
+    new = [fid_new]
+    due_post = PoolPosterior(alpha=100.0, beta=1.0)  # due arm almost certain
+    new_post = PoolPosterior(alpha=3.0, beta=7.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel.pool_label == "due"
+    assert sel.new_post == new_post    # unchanged when due arm chosen
+
+
+# ---------------------------------------------------------------------------
+# _select_card: forced pool cases (single pool available)
+# ---------------------------------------------------------------------------
+
+def test_select_card_due_only_reasoning(conn):
+    fid = _insert_fact_and_question(conn, "QDueOnly?", "ADueOnly")
+    _seed_card_state(conn, fid, lapses=0, ease=1.8,
+                     due_date=(TODAY - timedelta(days=2)))
+    rng = random.Random(0)
+    lapsed = deque()
+    due = [fid]
+    new = []           # empty new pool → forced due, no MAB
+    due_post = PoolPosterior(alpha=2.0, beta=2.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "due"
+    assert "Due only" in sel.reasoning
+    assert "MAB" not in sel.reasoning
+    assert "ease=1.80" in sel.reasoning
+    assert "overdue 2d" in sel.reasoning
+
+
+def test_select_card_new_only_reasoning(conn):
+    fid = _insert_fact_and_question(conn, "QNewOnly?", "ANewOnly")
+    rng = random.Random(0)
+    lapsed = deque()
+    due = []           # empty due pool → forced new, no MAB
+    new = [fid]
+    due_post = PoolPosterior(alpha=2.0, beta=2.0)
+    new_post = PoolPosterior(alpha=5.0, beta=3.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "new"
+    assert "New only" in sel.reasoning
+    assert "MAB" not in sel.reasoning
+    assert "1 unseen remaining" in sel.reasoning
+
+
+# ---------------------------------------------------------------------------
+# _drill_reasoning
+# ---------------------------------------------------------------------------
+
+def _seed_review(conn, fact_id, correct, reviewed_at):
+    conn.execute(
+        "INSERT INTO reviews"
+        " (fact_id, question_id, reviewed_at, grade, correct, pool,"
+        "  ease_after, interval_after)"
+        " VALUES (?, 1, ?, 0, ?, 'drill', 2.5, 1)",
+        (fact_id, reviewed_at, int(correct)),
+    )
+    conn.commit()
+
+
+def test_drill_reasoning_includes_lapses_and_days(conn):
+    fid = _insert_fact_and_question(conn, "QDrill?", "ADrill")
+    _seed_card_state(
+        conn, fid, lapses=3,
+        last_reviewed_at=datetime(2026, 5, 6, 10, 0,
+                                  tzinfo=timezone.utc).isoformat(),
+    )
+    _seed_review(conn, fid, correct=False,
+                 reviewed_at=datetime(2026, 5, 4, 10, 0,
+                                      tzinfo=timezone.utc).isoformat())
+    result = _drill_reasoning(conn, fid, TODAY)
+    # TODAY = date(2026, 5, 9)
+    assert "lapses=3" in result
+    assert "last seen 3d ago" in result   # 2026-05-06 → 3 days before TODAY
+    assert "last wrong 5d ago" in result  # 2026-05-04 → 5 days before TODAY
+
+
+def test_drill_reasoning_no_wrong_review(conn):
+    fid = _insert_fact_and_question(conn, "QDrill2?", "ADrill2")
+    _seed_card_state(conn, fid, lapses=1,
+                     last_reviewed_at=datetime(2026, 5, 8, 10, 0,
+                     tzinfo=timezone.utc).isoformat())
+    # No wrong reviews inserted
+    result = _drill_reasoning(conn, fid, TODAY)
+    assert "lapses=1" in result
+    assert "last seen 1d ago" in result
+    assert "never wrong" in result

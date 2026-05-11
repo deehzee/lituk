@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
-from lituk.review.bandit import PoolPosterior, choose
+from lituk.review.bandit import PoolPosterior, choose_with_samples
 from lituk.review.presenter import Prompt, build_prompt, grade_answer
 from lituk.review.scheduler import CardState, initial_state
 from lituk.review.scheduler import update as sm2_update
@@ -24,6 +24,7 @@ class SessionResult:
 
 
 class UI(Protocol):
+    def show_reasoning(self, text: str) -> None: ...
     def show_prompt(self, prompt: Prompt) -> list[int]: ...
     def show_feedback(self, prompt: Prompt, correct: bool) -> int: ...
     def show_summary(self, result: SessionResult) -> None: ...
@@ -123,6 +124,148 @@ def _compute_posteriors(
         PoolPosterior(alpha=n_unexplored + 1, beta=n_explored + 1),
         PoolPosterior(alpha=n_wrong + 1, beta=n_correct + 1),
     )
+
+
+@dataclass(frozen=True)
+class Selection:
+    fact_id: int
+    pool_label: str
+    reasoning: str
+    new_post: PoolPosterior
+
+
+def _select_card(
+    rng: random.Random,
+    lapsed: deque[int],
+    due: list[int],
+    new: list[int],
+    due_post: PoolPosterior,
+    new_post: PoolPosterior,
+    conn: sqlite3.Connection,
+    today: date,
+) -> "Selection | None":
+    if lapsed:
+        fact_id = lapsed.popleft()
+        row = conn.execute(
+            "SELECT lapses, last_reviewed_at FROM card_state WHERE fact_id=?",
+            (fact_id,),
+        ).fetchone()
+        lapses = row["lapses"] if row else 0
+        if row and row["last_reviewed_at"]:
+            last_dt = datetime.fromisoformat(row["last_reviewed_at"])
+            if last_dt.tzinfo is not None:
+                last_dt = last_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            days_ago = (today - last_dt.date()).days
+            last_seen = f"last seen {days_ago}d ago"
+        else:
+            last_seen = "never seen"
+        reasoning = f"Lapsed: failed this session | lapses={lapses}, {last_seen}"
+        return Selection(
+            fact_id=fact_id,
+            pool_label="lapsed",
+            reasoning=reasoning,
+            new_post=new_post,
+        )
+
+    if not due and not new:
+        return None
+
+    n_due = len(due)
+    n_new = len(new)
+    both = n_due > 0 and n_new > 0   # captured BEFORE any pop
+
+    if both:
+        arm, theta_due, theta_new = choose_with_samples(rng, due_post, new_post)
+    elif due:
+        arm = "due"
+        theta_due = theta_new = 0.0
+    else:
+        arm = "new"
+        theta_due = theta_new = 0.0
+
+    if arm == "due":
+        fact_id = due.pop(0)
+        row = conn.execute(
+            "SELECT ease_factor, due_date FROM card_state WHERE fact_id=?",
+            (fact_id,),
+        ).fetchone()
+        ease = row["ease_factor"] if row else 0.0
+        due_d = date.fromisoformat(row["due_date"]) if row else today
+        overdue = (today - due_d).days
+        if both:
+            reasoning = (
+                f"MAB: θ_due={theta_due:.2f}"
+                f"(α={due_post.alpha:.0f},β={due_post.beta:.0f})"
+                f" > θ_new={theta_new:.2f}"
+                f"(α={new_post.alpha:.0f},β={new_post.beta:.0f})"
+                f" → due | {n_due} due, {n_new} new"
+                f" | ease={ease:.2f}, overdue {overdue}d"
+            )
+        else:
+            reasoning = f"Due only (no unseen) | ease={ease:.2f}, overdue {overdue}d"
+        return Selection(
+            fact_id=fact_id,
+            pool_label="due",
+            reasoning=reasoning,
+            new_post=new_post,
+        )
+    else:  # arm == "new"
+        fact_id = new.pop(0)
+        updated_new_post = PoolPosterior(
+            alpha=new_post.alpha - 1, beta=new_post.beta + 1
+        )
+        if both:
+            reasoning = (
+                f"MAB: θ_new={theta_new:.2f}"
+                f"(α={new_post.alpha:.0f},β={new_post.beta:.0f})"
+                f" > θ_due={theta_due:.2f}"
+                f"(α={due_post.alpha:.0f},β={due_post.beta:.0f})"
+                f" → new | {n_new} new, {n_due} due"
+            )
+        else:
+            reasoning = f"New only (no due) | {n_new} unseen remaining"
+        return Selection(
+            fact_id=fact_id,
+            pool_label="new",
+            reasoning=reasoning,
+            new_post=updated_new_post,
+        )
+
+
+def _drill_reasoning(
+    conn: sqlite3.Connection, fact_id: int, today: date
+) -> str:
+    """Produce reasoning line for drill-mode cards showing per-card stats."""
+    row = conn.execute(
+        "SELECT lapses, last_reviewed_at FROM card_state WHERE fact_id=?",
+        (fact_id,),
+    ).fetchone()
+    lapses = row["lapses"] if row else 0
+    if row and row["last_reviewed_at"]:
+        last_dt = datetime.fromisoformat(row["last_reviewed_at"])
+        if last_dt.tzinfo is not None:
+            last_dt = last_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        days_ago = (today - last_dt.date()).days
+        last_seen = f"last seen {days_ago}d ago"
+    else:
+        last_seen = "never seen"
+
+    wrong_row = conn.execute(
+        "SELECT reviewed_at FROM reviews"
+        " WHERE fact_id=? AND correct=0"
+        " ORDER BY reviewed_at DESC LIMIT 1",
+        (fact_id,),
+    ).fetchone()
+    if wrong_row:
+        wrong_dt = datetime.fromisoformat(wrong_row["reviewed_at"])
+        if wrong_dt.tzinfo is not None:
+            wrong_dt = wrong_dt.astimezone(timezone.utc).replace(tzinfo=None)
+        wrong_days = (today - wrong_dt.date()).days
+        last_wrong = f"last wrong {wrong_days}d ago"
+    else:
+        last_wrong = "never wrong"
+
+    return f"Drill: lapses={lapses}, {last_seen}, {last_wrong}"
 
 
 def _load_card_state(
@@ -239,9 +382,6 @@ def run_session(
     rng.shuffle(new)
     new_post, due_post = _compute_posteriors(conn, today, topics)
 
-    # In-memory counters for mid-session posterior updates
-    n_unexplored = len(new)
-    n_explored = conn.execute("SELECT COUNT(*) FROM card_state").fetchone()[0]
     cutoff = (today - timedelta(days=30)).isoformat()
     row = conn.execute(
         "SELECT"
@@ -260,39 +400,19 @@ def run_session(
     weak: set[int] = set()
 
     for _ in range(config.size):
-        if lapsed:
-            fact_id = lapsed.popleft()
-            pool_label = "lapsed"
-        else:
-            due_ok = bool(due)
-            new_ok = bool(new)
-            if not due_ok and not new_ok:
-                break
-
-            if due_ok and new_ok:
-                arm = choose(rng, due_post, new_post)
-            elif due_ok:
-                arm = "due"
-            else:
-                arm = "new"
-
-            if arm == "due":
-                fact_id = due.pop(0)
-                pool_label = "due"
-            else:
-                fact_id = new.pop(0)
-                pool_label = "new"
-                n_unexplored -= 1
-                n_explored += 1
-                new_post = PoolPosterior(
-                    alpha=n_unexplored + 1, beta=n_explored + 1
-                )
+        sel = _select_card(
+            rng, lapsed, due, new, due_post, new_post, conn, today
+        )
+        if sel is None:
+            break
+        new_post = sel.new_post
+        ui.show_reasoning(sel.reasoning)
 
         correct, _ = _present_and_grade(
-            conn, today, ui, fact_id, pool_label, rng, session_id
+            conn, today, ui, sel.fact_id, sel.pool_label, rng, session_id
         )
 
-        if pool_label in ("due", "lapsed"):
+        if sel.pool_label in ("due", "lapsed"):
             if correct:
                 n_correct += 1
             else:
@@ -302,8 +422,8 @@ def run_session(
         if correct:
             correct_count += 1
         else:
-            weak.add(fact_id)
-            lapsed.append(fact_id)
+            weak.add(sel.fact_id)
+            lapsed.append(sel.fact_id)
 
         total += 1
 
@@ -392,6 +512,8 @@ def run_drill_session(
                 break
             fact_id = pool.pop(0)
             pool_label = "drill"
+
+        ui.show_reasoning(_drill_reasoning(conn, fact_id, today))
 
         correct, _ = _present_and_grade(
             conn, today, ui, fact_id, pool_label, rng, session_id

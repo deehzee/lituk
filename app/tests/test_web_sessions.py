@@ -190,3 +190,23 @@ def test_submit_grade_unblocks_show_feedback():
     ui.submit_grade(5)
     t.join(timeout=1)
     assert grades == [5]
+
+
+# ---------------------------------------------------------------------------
+# WebUI.show_reasoning
+# ---------------------------------------------------------------------------
+
+def test_show_reasoning_prints_to_stdout(capsys):
+    ui = WebUI()
+    ui.show_reasoning("MAB: θ_due=0.72 → due | 8 due, 3 new")
+    captured = capsys.readouterr()
+    assert "→" in captured.out
+    assert "MAB:" in captured.out
+
+
+def test_show_reasoning_includes_text(capsys):
+    ui = WebUI()
+    ui.show_reasoning("Drill: lapses=2, last seen 3d ago, last wrong 5d ago")
+    captured = capsys.readouterr()
+    assert "Drill:" in captured.out
+    assert "lapses=2" in captured.out
