@@ -80,16 +80,33 @@ def main(
     if parsed.mode == "regular":
         _due = due_today(conn, _today)
         _total = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+        if _total == 0:
+            print(
+                "No facts found. Run 'lituk ingest' first.", file=sys.stderr
+            )
+            sys.exit(1)
         _banner = f"Regular mode  •  {_due} due today  •  {_total} facts total"
     elif parsed.mode == "drill":
         _n = conn.execute(
             "SELECT COUNT(*) FROM card_state WHERE lapses > 0"
         ).fetchone()[0]
+        if _n == 0:
+            print("No missed facts to drill yet. Complete a regular session first.")
+            sys.exit(0)
         _banner = f"Drill mode  •  {_n} missed facts ready"
     else:  # explore
         _cov = coverage(conn)
-        _unseen = _cov["total"] - _cov["seen"]
-        _banner = f"Explore mode  •  {_unseen} unseen of {_cov['total']} total"
+        _total = _cov["total"]
+        _unseen = _total - _cov["seen"]
+        if _total == 0:
+            print(
+                "No facts found. Run 'lituk ingest' first.", file=sys.stderr
+            )
+            sys.exit(1)
+        if _unseen == 0:
+            print("All facts have been explored! Try regular or drill mode.")
+            sys.exit(0)
+        _banner = f"Explore mode  •  {_unseen} unseen of {_total} total"
     if parsed.dry_run:
         _banner += "  (dry run — no state will be saved)"
     print(_banner)
