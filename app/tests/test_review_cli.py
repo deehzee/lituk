@@ -239,7 +239,7 @@ def test_main_wrong_then_correct(tmp_path):
             pass  # no shuffle — Correct stays at index 0 (letter A)
         def choice(self, seq):
             return seq[0]
-        def betavariate(self, a, b):
+        def betavariate(self, alpha, beta):  # type: ignore[override]
             return 0.5
 
     rng = FixedRNG()
@@ -459,7 +459,7 @@ def test_dry_run_no_writes_to_disk(tmp_path):
             pass
         def choice(self, seq):
             return seq[0]
-        def betavariate(self, a, b):
+        def betavariate(self, alpha, beta):  # type: ignore[override]
             return 0.5
 
     rng = FixedRNG()
@@ -508,3 +508,97 @@ def test_dry_run_mode_explore_smoke(tmp_path):
         with pytest.raises(SystemExit) as exc:
             main(["--db", db_path, "--mode", "explore", "--dry-run"])
     assert exc.value.code == 0
+
+
+def test_dry_run_on_uninitialised_db(tmp_path):
+    """--dry-run works when main() is the first caller (no prior init_db).
+
+    This is the exact scenario that triggered the 'no such table: card_state'
+    crash: the DB file may not have been initialised before --dry-run is used.
+    """
+    db_path = str(tmp_path / "brand_new.db")
+    # Intentionally skip init_db() — main() must handle it
+    with patch("lituk.review.run_session"), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit) as exc:
+            main(["--db", db_path, "--dry-run"])
+    assert exc.value.code == 0
+    # Schema should exist on disk but no reviews were written
+    conn = init_db(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+    conn.close()
+    assert count == 0
+
+
+def test_dry_run_no_writes_mode_drill(tmp_path):
+    """--dry-run --mode drill leaves the on-disk reviews table unchanged."""
+    db_path = str(tmp_path / "test.db")
+    conn = init_db(db_path)
+    fid = _insert_fact_and_question(conn)
+    # Seed a lapse so the drill pool is non-empty
+    conn.execute(
+        "INSERT INTO card_state"
+        " (fact_id, ease_factor, interval_days, repetitions, due_date, lapses)"
+        " VALUES (?, 2.5, 1, 1, '2020-01-01', 1)",
+        (fid,),
+    )
+    conn.commit()
+    conn.close()
+
+    class FixedRNG(random.Random):
+        def shuffle(self, x):
+            pass
+        def choice(self, seq):
+            return seq[0]
+        def betavariate(self, alpha, beta):  # type: ignore[override]
+            return 0.5
+
+    inputs = iter(["A", "g"])
+    with patch("builtins.input", side_effect=inputs), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit) as exc:
+            main(
+                ["--db", db_path, "--mode", "drill", "--dry-run", "--size", "1"],
+                _rng=FixedRNG(),
+            )
+    assert exc.value.code == 0
+    conn = init_db(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM reviews").fetchone()[0]
+    conn.close()
+    assert count == 0
+
+
+def test_main_mode_drill_passes_chapters(tmp_path):
+    """--mode drill passes --chapters to run_drill_session."""
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    captured: dict = {}
+
+    def _capture(*args, **kwargs):
+        captured.update(kwargs)
+        from lituk.review.session import SessionResult
+        return SessionResult(correct=0, total=0, weak_facts=[])
+
+    with patch("lituk.review.run_drill_session", side_effect=_capture), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "drill", "--chapters", "1,2"])
+    assert captured.get("topics") == [1, 2]
+
+
+def test_main_mode_explore_passes_chapters(tmp_path):
+    """--mode explore passes --chapters to run_explore_session."""
+    db_path = str(tmp_path / "test.db")
+    init_db(db_path).close()
+    captured: dict = {}
+
+    def _capture(*args, **kwargs):
+        captured.update(kwargs)
+        from lituk.review.session import SessionResult
+        return SessionResult(correct=0, total=0, weak_facts=[])
+
+    with patch("lituk.review.run_explore_session", side_effect=_capture), \
+         patch("sys.stdout", new_callable=StringIO):
+        with pytest.raises(SystemExit):
+            main(["--db", db_path, "--mode", "explore", "--chapters", "3"])
+    assert captured.get("topics") == [3]
