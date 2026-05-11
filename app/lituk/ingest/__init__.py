@@ -7,7 +7,7 @@ _DEFAULT_DB = pathlib.Path(__file__).parents[2] / "data" / "lituk.db"
 _DEFAULT_DIR = pathlib.Path(__file__).parents[3] / "britizen" / "mock_tests"
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description="Ingest mock test PDFs into SQLite"
     )
@@ -19,9 +19,9 @@ def main() -> None:
         default=str(_DEFAULT_DIR),
         help="Mock tests directory"
     )
-    args = parser.parse_args()
-    print(f"Ingesting PDFs from {args.dir} into {args.db} ...")
-    ingest_all(args.db, args.dir)
+    parsed = parser.parse_args(argv)
+    print(f"Ingesting PDFs from {parsed.dir} into {parsed.db} ...")
+    ingest_all(parsed.db, parsed.dir)
     print("Done.")
 
 

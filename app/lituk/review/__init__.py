@@ -1,13 +1,20 @@
 import argparse
 import pathlib
 import random
+import sqlite3
 import sys
 import uuid
 from datetime import date
 
 from lituk.db import init_db
 from lituk.review.cli import TerminalUI
-from lituk.review.session import SessionConfig, run_session
+from lituk.review.session import (
+    SessionConfig,
+    run_drill_session,
+    run_explore_session,
+    run_session,
+)
+from lituk.web.queries import coverage, due_today
 
 
 _DEFAULT_DB = pathlib.Path(__file__).parents[2] / "data" / "lituk.db"
@@ -32,20 +39,97 @@ def main(
     parser.add_argument("--db", default=str(_DEFAULT_DB), help="Path to SQLite DB")
     parser.add_argument("--size", type=int, default=24, help="Cards per session")
     parser.add_argument(
-        "--topic",
+        "--mode",
+        choices=["regular", "drill", "explore"],
+        default="regular",
+        help=(
+            "Session mode: regular (SM-2 + bandit), drill (missed facts), "
+            "explore (unseen facts). Default: regular."
+        ),
+    )
+    parser.add_argument(
+        "--chapters", "--topic",
         type=_parse_topics,
         default=None,
+        dest="chapters",
         metavar="N[,N]",
         help="Chapter numbers to study, comma-separated (1-5). Default: all.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        default=False,
+        help=(
+            "Run session against an in-memory copy of the DB; discard all "
+            "writes on exit."
+        ),
+    )
     parsed = parser.parse_args(args)
 
-    conn = init_db(parsed.db)
+    if parsed.dry_run:
+        _src = init_db(parsed.db)  # ensures schema exists before backup
+        conn = sqlite3.connect(":memory:")
+        _src.backup(conn)
+        _src.close()
+        conn.row_factory = sqlite3.Row
+    else:
+        conn = init_db(parsed.db)
+
+    _today = date.today()
+
+    if parsed.mode == "regular":
+        _due = due_today(conn, _today)
+        _total = conn.execute("SELECT COUNT(*) FROM facts").fetchone()[0]
+        if _total == 0:
+            print(
+                "No facts found. Run 'lituk ingest' first.", file=sys.stderr
+            )
+            sys.exit(1)
+        _banner = f"Regular mode  •  {_due} due today  •  {_total} facts total"
+    elif parsed.mode == "drill":
+        _n = conn.execute(
+            "SELECT COUNT(*) FROM card_state WHERE lapses > 0"
+        ).fetchone()[0]
+        if _n == 0:
+            print("No missed facts to drill yet. Complete a regular session first.")
+            sys.exit(0)
+        _banner = f"Drill mode  •  {_n} missed facts ready"
+    else:  # explore
+        _cov = coverage(conn)
+        _total = _cov["total"]
+        _unseen = _total - _cov["seen"]
+        if _total == 0:
+            print(
+                "No facts found. Run 'lituk ingest' first.", file=sys.stderr
+            )
+            sys.exit(1)
+        if _unseen == 0:
+            print("All facts have been explored! Try regular or drill mode.")
+            sys.exit(0)
+        _banner = f"Explore mode  •  {_unseen} unseen of {_total} total"
+    if parsed.dry_run:
+        _banner += "  (dry run — no state will be saved)"
+    print(_banner)
+
     config = SessionConfig(size=parsed.size)
-    run_session(
-        conn, date.today(), _rng or random.Random(), config, TerminalUI(),
-        topics=parsed.topic,
-        session_id=str(uuid.uuid4()),
-    )
+    rng = _rng or random.Random()
+    sid = str(uuid.uuid4())
+
+    if parsed.mode == "drill":
+        run_drill_session(
+            conn, _today, rng, config, TerminalUI(),
+            topics=parsed.chapters, session_id=sid,
+        )
+    elif parsed.mode == "explore":
+        run_explore_session(
+            conn, _today, rng, config, TerminalUI(),
+            topics=parsed.chapters, session_id=sid,
+        )
+    else:
+        run_session(
+            conn, _today, rng, config, TerminalUI(),
+            topics=parsed.chapters, session_id=sid,
+        )
+
     conn.close()
     sys.exit(0)
