@@ -183,6 +183,29 @@ def test_show_summary_prints_weak_count():
 
 
 # ---------------------------------------------------------------------------
+# TerminalUI.show_reasoning
+# ---------------------------------------------------------------------------
+
+def test_show_reasoning_prints_ansi_dim(capsys):
+    ui = TerminalUI()
+    ui.show_reasoning(
+        "MAB: θ_due=0.72 → due | 8 due, 3 new | ease=2.10, overdue 3d"
+    )
+    captured = capsys.readouterr()
+    assert "\033[2m" in captured.out
+    assert "MAB:" in captured.out
+    assert "\033[0m" in captured.out
+
+
+def test_show_reasoning_includes_text_content(capsys):
+    ui = TerminalUI()
+    ui.show_reasoning("Lapsed: failed this session | lapses=2, last seen 1d ago")
+    captured = capsys.readouterr()
+    assert "Lapsed" in captured.out
+    assert "lapses=2" in captured.out
+
+
+# ---------------------------------------------------------------------------
 # main() integration
 # ---------------------------------------------------------------------------
 

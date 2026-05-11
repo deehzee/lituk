@@ -96,6 +96,10 @@ class StubUI:
         self.grade = grade
         self.prompts_shown: list[Prompt] = []
         self.feedbacks: list[tuple[Prompt, bool]] = []
+        self.reasonings: list[str] = []
+
+    def show_reasoning(self, text: str) -> None:
+        self.reasonings.append(text)
 
     def show_prompt(self, prompt: Prompt) -> list[int]:
         self.prompts_shown.append(prompt)

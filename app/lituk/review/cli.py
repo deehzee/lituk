@@ -20,6 +20,9 @@ class TerminalUI:
     def __init__(self) -> None:
         self._card_num = 0
 
+    def show_reasoning(self, text: str) -> None:
+        print(f"\033[2m  {text}\033[0m")
+
     def show_prompt(self, prompt: Prompt) -> list[int]:
         self._card_num += 1
         print(f"\n--- Card {self._card_num} ---")
