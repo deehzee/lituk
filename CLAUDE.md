@@ -98,7 +98,7 @@ supplementary. Do not rely solely on the cheat sheet.
 
 ### Formatting
 
-- **All files**: max line width 90 characters
+- **All files**: max line width 90 characters, no trailing whitespaces.
 - **Markdown**: wrap at 90 chars wherever possible without breaking rendering (don't
   break URLs, code spans, or table cells)
 - **Python imports**: three sections in order — (1) standard library, (2) third-party,
