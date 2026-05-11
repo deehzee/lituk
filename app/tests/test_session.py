@@ -485,11 +485,12 @@ def test_drill_session_pulls_only_lapsed_facts(conn):
     _seed_lapsed_card(conn, fid_lapsed, lapses=1)
 
     ui = StubUI()
-    run_drill_session(
+    result = run_drill_session(
         conn, TODAY, random.Random(0), SessionConfig(size=5), ui
     )
     shown = {p.fact_id for p in ui.prompts_shown}
     assert fid_lapsed in shown
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_excludes_non_lapsed_facts(conn):
@@ -502,48 +503,57 @@ def test_drill_session_excludes_non_lapsed_facts(conn):
         conn, TODAY, random.Random(0), SessionConfig(size=5), ui
     )
     assert result.total == 0  # drill pool is empty
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_writes_pool_drill(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=2)
 
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    ui = StubUI()
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
 
     row = conn.execute("SELECT pool FROM reviews").fetchone()
     assert row["pool"] == "drill"
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_updates_sm2(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=1)
 
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    ui = StubUI()
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
 
     row = conn.execute(
         "SELECT repetitions FROM card_state WHERE fact_id=?", (fid,)
     ).fetchone()
     assert row["repetitions"] > 0
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_writes_review_with_drill_pool(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=1)
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI())
+    ui = StubUI()
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=1), ui)
     row = conn.execute("SELECT pool FROM reviews").fetchone()
     assert row["pool"] == "drill"
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_id_written(conn):
     fid = _insert_fact_and_question(conn, "Q1?", "Correct", 1, 1)
     _seed_lapsed_card(conn, fid, lapses=1)
 
-    run_drill_session(
-        conn, TODAY, random.Random(0), SessionConfig(size=1), StubUI(),
+    ui = StubUI()
+    result = run_drill_session(
+        conn, TODAY, random.Random(0), SessionConfig(size=1), ui,
         session_id="drill-uuid",
     )
     row = conn.execute("SELECT session_id FROM reviews").fetchone()
     assert row["session_id"] == "drill-uuid"
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_topic_filter(conn):
@@ -553,13 +563,14 @@ def test_drill_session_topic_filter(conn):
     _seed_lapsed_card(conn, fid4, lapses=1)
 
     ui = StubUI()
-    run_drill_session(
+    result = run_drill_session(
         conn, TODAY, random.Random(0), SessionConfig(size=5), ui,
         topics=[3],
     )
     shown = {p.fact_id for p in ui.prompts_shown}
     assert fid3 in shown
     assert fid4 not in shown
+    assert len(ui.reasonings) == result.total
 
 
 def test_drill_session_lapsed_in_session_reinforcement(conn):
@@ -581,10 +592,11 @@ def test_drill_session_lapsed_in_session_reinforcement(conn):
             return list(prompt.correct_indices)
 
     ui = WrongThenRightUI()
-    run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
+    result = run_drill_session(conn, TODAY, random.Random(0), SessionConfig(size=3), ui)
     assert ui.prompts_shown.count(ui.prompts_shown[0]) >= 1
     shown_facts = [p.fact_id for p in ui.prompts_shown]
     assert shown_facts.count(fid) >= 2
+    assert len(ui.reasonings) == result.total
 
 
 # ---------------------------------------------------------------------------

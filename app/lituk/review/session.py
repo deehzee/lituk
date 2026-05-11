@@ -513,6 +513,8 @@ def run_drill_session(
             fact_id = pool.pop(0)
             pool_label = "drill"
 
+        ui.show_reasoning(_drill_reasoning(conn, fact_id, today))
+
         correct, _ = _present_and_grade(
             conn, today, ui, fact_id, pool_label, rng, session_id
         )
