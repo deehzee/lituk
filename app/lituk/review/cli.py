@@ -43,6 +43,7 @@ class TerminalUI:
     def show_feedback(self, prompt: Prompt, correct: bool) -> int:
         if correct:
             print("  Correct!")
+            print(f"  {prompt.explanation}")
             while True:
                 raw = input(
                     "  Grade: [a]gain  [h]ard  [g]ood  [e]asy: "
@@ -56,6 +57,7 @@ class TerminalUI:
                 prompt.choices[i] for i in sorted(prompt.correct_indices)
             )
             print(f"  Wrong! Answer: {correct_text}")
+            print(f"  {prompt.explanation}")
             print()
             return 0
 

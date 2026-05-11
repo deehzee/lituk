@@ -163,6 +163,23 @@ def test_show_feedback_retries_on_invalid_grade():
     assert "Enter" in out.getvalue()
 
 
+def test_show_feedback_correct_shows_explanation():
+    ui = TerminalUI()
+    prompt = _known_prompt()
+    with patch("builtins.input", return_value="g"), \
+         patch("sys.stdout", new_callable=StringIO) as out:
+        ui.show_feedback(prompt, True)
+    assert "Correct is the right answer." in out.getvalue()
+
+
+def test_show_feedback_wrong_shows_explanation():
+    ui = TerminalUI()
+    prompt = _known_prompt(correct_at=0)
+    with patch("sys.stdout", new_callable=StringIO) as out:
+        ui.show_feedback(prompt, False)
+    assert "Correct is the right answer." in out.getvalue()
+
+
 # ---------------------------------------------------------------------------
 # TerminalUI.show_summary
 # ---------------------------------------------------------------------------
