@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
-from lituk.review.bandit import PoolPosterior, choose
+from lituk.review.bandit import PoolPosterior, choose, choose_with_samples
 from lituk.review.presenter import Prompt, build_prompt, grade_answer
 from lituk.review.scheduler import CardState, initial_state
 from lituk.review.scheduler import update as sm2_update
@@ -123,6 +123,53 @@ def _compute_posteriors(
         PoolPosterior(alpha=n_unexplored + 1, beta=n_explored + 1),
         PoolPosterior(alpha=n_wrong + 1, beta=n_correct + 1),
     )
+
+
+@dataclass(frozen=True)
+class Selection:
+    fact_id: int
+    pool_label: str
+    reasoning: str
+    new_post: PoolPosterior
+
+
+def _select_card(
+    rng: random.Random,
+    lapsed: deque[int],
+    due: list[int],
+    new: list[int],
+    due_post: PoolPosterior,
+    new_post: PoolPosterior,
+    conn: sqlite3.Connection,
+    today: date,
+) -> "Selection | None":
+    if lapsed:
+        fact_id = lapsed.popleft()
+        row = conn.execute(
+            "SELECT lapses, last_reviewed_at FROM card_state WHERE fact_id=?",
+            (fact_id,),
+        ).fetchone()
+        lapses = row["lapses"] if row else 0
+        if row and row["last_reviewed_at"]:
+            last_dt = datetime.fromisoformat(row["last_reviewed_at"])
+            if last_dt.tzinfo is not None:
+                last_dt = last_dt.astimezone(timezone.utc).replace(tzinfo=None)
+            days_ago = (today - last_dt.date()).days
+            last_seen = f"last seen {days_ago}d ago"
+        else:
+            last_seen = "never seen"
+        reasoning = f"Lapsed: failed this session | lapses={lapses}, {last_seen}"
+        return Selection(
+            fact_id=fact_id,
+            pool_label="lapsed",
+            reasoning=reasoning,
+            new_post=new_post,
+        )
+
+    if not due and not new:
+        return None
+
+    raise NotImplementedError("remaining branches not yet implemented")
 
 
 def _load_card_state(

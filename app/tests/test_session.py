@@ -1,15 +1,19 @@
 import json
 import random
-from datetime import date, timedelta
+from collections import deque
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
 from lituk.db import init_db
+from lituk.review.bandit import PoolPosterior
 from lituk.review.presenter import Prompt
 from lituk.review.session import (
+    Selection,
     SessionConfig,
     SessionResult,
     _compute_posteriors,
+    _select_card,
     run_drill_session,
     run_explore_session,
     run_session,
@@ -23,7 +27,7 @@ TODAY = date(2026, 5, 9)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _insert_fact_and_question(conn, q_text, a_text, source_test, q_num,
+def _insert_fact_and_question(conn, q_text, a_text, source_test=1, q_num=1,
                                choices=None, correct_letters=None,
                                topic=None):
     if choices is None:
@@ -63,6 +67,22 @@ def _seed_due_card(conn, fact_id, due_date=None):
         " (fact_id, ease_factor, interval_days, repetitions, due_date, lapses)"
         " VALUES (?, 2.5, 1, 1, ?, 0)",
         (fact_id, due_date.isoformat()),
+    )
+    conn.commit()
+
+
+def _seed_card_state(conn, fact_id, lapses=1, last_reviewed_at=None,
+                     ease=2.5, interval=1, due_date: date | None = None):
+    if last_reviewed_at is None:
+        last_reviewed_at = datetime(2026, 5, 4, 12, 0, 0,
+                                    tzinfo=timezone.utc).isoformat()
+    due_date_str = due_date.isoformat() if due_date else TODAY.isoformat()
+    conn.execute(
+        "INSERT OR REPLACE INTO card_state"
+        " (fact_id, ease_factor, interval_days, repetitions,"
+        "  due_date, last_reviewed_at, lapses)"
+        " VALUES (?, ?, ?, 1, ?, ?, ?)",
+        (fact_id, ease, interval, due_date_str, last_reviewed_at, lapses),
     )
     conn.commit()
 
@@ -736,3 +756,51 @@ def test_compute_posteriors_topic_filter(conn):
     # ch2: 1 unexplored, 0 explored → Beta(2, 1)
     assert new_post.alpha == 2
     assert new_post.beta == 1
+
+
+# ---------------------------------------------------------------------------
+# _select_card: lapsed case
+# ---------------------------------------------------------------------------
+
+def test_select_card_lapsed_returns_lapsed_label(conn):
+    fid = _insert_fact_and_question(conn, "Q?", "A")
+    _seed_card_state(conn, fid, lapses=2,
+                     last_reviewed_at=datetime(2026, 5, 4, 12, 0,
+                     tzinfo=timezone.utc).isoformat())
+    rng = random.Random(1)
+    lapsed = deque([fid])
+    due = []
+    new = []
+    due_post = PoolPosterior(alpha=1.0, beta=1.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    sel = _select_card(rng, lapsed, due, new, due_post, new_post, conn, TODAY)
+    assert sel is not None
+    assert sel.pool_label == "lapsed"
+    assert sel.fact_id == fid
+    assert "Lapsed" in sel.reasoning
+    assert "lapses=2" in sel.reasoning
+    assert "last seen 5d ago" in sel.reasoning
+
+
+def test_select_card_lapsed_pops_from_deque(conn):
+    fid = _insert_fact_and_question(conn, "Q2?", "A2")
+    _seed_card_state(conn, fid, lapses=1)
+    lapsed = deque([fid])
+    due = []
+    new = []
+    due_post = PoolPosterior(alpha=1.0, beta=1.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    _select_card(random.Random(0), lapsed, due, new,
+                 due_post, new_post, conn, TODAY)
+    assert len(lapsed) == 0
+
+
+def test_select_card_all_empty_returns_none(conn):
+    lapsed = deque()
+    due = []
+    new = []
+    due_post = PoolPosterior(alpha=1.0, beta=1.0)
+    new_post = PoolPosterior(alpha=1.0, beta=1.0)
+    sel = _select_card(random.Random(0), lapsed, due, new,
+                       due_post, new_post, conn, TODAY)
+    assert sel is None
