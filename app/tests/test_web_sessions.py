@@ -142,6 +142,14 @@ def test_show_feedback_reveals_correct_indices():
     assert ui.state.payload["correct_indices"] == [2]
 
 
+def test_show_feedback_payload_includes_explanation():
+    ui = WebUI()
+    prompt = _make_prompt()
+    ui._grade_q.put(4)
+    ui.show_feedback(prompt, True)
+    assert ui.state.payload["explanation"] == "The year was 1066."
+
+
 def test_show_summary_transitions_to_summary():
     from lituk.review.session import SessionResult
     ui = WebUI()
