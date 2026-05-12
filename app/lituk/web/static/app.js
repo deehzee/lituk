@@ -166,6 +166,9 @@ function initSession() {
       fbChoices.appendChild(btn);
     });
 
+    document.getElementById("fb-explanation").textContent =
+      payload.explanation || "";
+
     const gradeArea = document.getElementById("grade-area");
     const gradeBtns = document.getElementById("grade-btns");
     const gradeLabel = document.getElementById("grade-label");

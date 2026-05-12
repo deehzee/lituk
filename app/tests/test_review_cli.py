@@ -19,7 +19,8 @@ from lituk.review.presenter import Prompt
 def _insert_fact_and_question(conn, q_text="Q?", a_text="Correct",
                                source_test=1, q_num=1,
                                choices=None, correct_letters=None,
-                               is_multi=0, is_true_false=0, topic=None):
+                               is_multi=0, is_true_false=0, topic=None,
+                               explanation="Test explanation."):
     if choices is None:
         choices = ["Correct", "Wrong1", "Wrong2", "Wrong3"]
     if correct_letters is None:
@@ -40,10 +41,10 @@ def _insert_fact_and_question(conn, q_text="Q?", a_text="Correct",
     conn.execute(
         "INSERT OR IGNORE INTO questions"
         " (source_test, q_number, question_text, choices, correct_letters,"
-        "  is_true_false, is_multi, fact_id)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "  explanation, is_true_false, is_multi, fact_id)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (source_test, q_num, q_text, json.dumps(choices),
-         json.dumps(correct_letters), is_true_false, is_multi, fid),
+         json.dumps(correct_letters), explanation, is_true_false, is_multi, fid),
     )
     conn.commit()
     return fid
@@ -59,6 +60,7 @@ def _known_prompt(correct_at=0) -> Prompt:
         correct_indices=[0],  # after shuffle, correct is always first
         is_multi=False,
         is_true_false=False,
+        explanation="Correct is the right answer.",
     )
 
 
@@ -106,6 +108,7 @@ def test_show_prompt_multi_hint_shown():
         choices=["Red", "Blue", "Green", "Yellow"],
         correct_indices=[0, 1],
         is_multi=True, is_true_false=False,
+        explanation="Red and Blue are primary colours.",
     )
     with patch("builtins.input", return_value="A,B"), \
          patch("sys.stdout", new_callable=StringIO) as out:
@@ -158,6 +161,23 @@ def test_show_feedback_retries_on_invalid_grade():
         grade = ui.show_feedback(prompt, True)
     assert grade == 4
     assert "Enter" in out.getvalue()
+
+
+def test_show_feedback_correct_shows_explanation():
+    ui = TerminalUI()
+    prompt = _known_prompt()
+    with patch("builtins.input", return_value="g"), \
+         patch("sys.stdout", new_callable=StringIO) as out:
+        ui.show_feedback(prompt, True)
+    assert "Correct is the right answer." in out.getvalue()
+
+
+def test_show_feedback_wrong_shows_explanation():
+    ui = TerminalUI()
+    prompt = _known_prompt(correct_at=0)
+    with patch("sys.stdout", new_callable=StringIO) as out:
+        ui.show_feedback(prompt, False)
+    assert "Correct is the right answer." in out.getvalue()
 
 
 # ---------------------------------------------------------------------------

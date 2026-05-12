@@ -20,6 +20,7 @@ def _make_prompt(correct_indices=None):
         correct_indices=correct_indices,
         is_multi=False,
         is_true_false=False,
+        explanation="The year was 1066.",
     )
 
 
@@ -139,6 +140,14 @@ def test_show_feedback_reveals_correct_indices():
     ui._grade_q.put(4)
     ui.show_feedback(prompt, correct=True)
     assert ui.state.payload["correct_indices"] == [2]
+
+
+def test_show_feedback_payload_includes_explanation():
+    ui = WebUI()
+    prompt = _make_prompt()
+    ui._grade_q.put(4)
+    ui.show_feedback(prompt, True)
+    assert ui.state.payload["explanation"] == "The year was 1066."
 
 
 def test_show_summary_transitions_to_summary():

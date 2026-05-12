@@ -13,13 +13,14 @@ class Prompt:
     correct_indices: list[int]
     is_multi: bool
     is_true_false: bool
+    explanation: str
 
 
 def build_prompt(
     conn: sqlite3.Connection, fact_id: int, rng: random.Random
 ) -> Prompt:
     rows = conn.execute(
-        "SELECT id, question_text, choices, correct_letters,"
+        "SELECT id, question_text, choices, correct_letters, explanation,"
         " is_true_false, is_multi FROM questions WHERE fact_id = ?",
         (fact_id,),
     ).fetchall()
@@ -46,6 +47,7 @@ def build_prompt(
         correct_indices=new_correct,
         is_multi=bool(row["is_multi"]),
         is_true_false=bool(row["is_true_false"]),
+        explanation=row["explanation"] or "",
     )
 
 

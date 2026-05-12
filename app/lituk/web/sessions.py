@@ -61,6 +61,7 @@ class WebUI:
             "correct": correct,
             "choices": prompt.choices,
             "correct_indices": prompt.correct_indices,
+            "explanation": prompt.explanation,
         })
         # Always block: on miss the client posts any grade (we return 0 and
         # the session loop ignores our return); on hit we return the grade.
