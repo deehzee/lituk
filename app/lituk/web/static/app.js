@@ -176,7 +176,7 @@ function initSession() {
 
     if (payload.correct) {
       gradeLabel.textContent = "How well did you know it?";
-      [["Hard","3"],["Good","4"],["Easy","5"]].forEach(([label, grade]) => {
+      [["Again","0"],["Hard","3"],["Good","4"],["Easy","5"]].forEach(([label, grade]) => {
         const btn = document.createElement("button");
         btn.className = "grade-btn";
         btn.dataset.grade = grade;

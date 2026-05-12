@@ -30,6 +30,7 @@
 
 /* Grade buttons */
 .grade-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; }
+.grade-btn[data-grade="0"] { background: #c0392b; color: #fff; border: none; }
 .grade-btn[data-grade="3"] { background: #e67e22; color: #fff; border: none; }
 .grade-btn[data-grade="4"] { background: #27ae60; color: #fff; border: none; }
 .grade-btn[data-grade="5"] { background: #2980b9; color: #fff; border: none; }
